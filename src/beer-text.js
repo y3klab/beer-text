@@ -280,9 +280,17 @@ export function pour(target, options) {
     m.lines.forEach(function (l) { ccx.fillText(l.text, l.x, l.base - y0); });
     var all = ccx.getImageData(0, 0, w, ch).data, cover = new Float32Array(w);
     var own = Math.max(0, Math.round(line.base - m.capH - y0));       // the row where the stream's own line starts
+    // Ink only counts with a little stroke on both sides of it, so a stream sits inside its letters
+    // rather than on a sliver where two lines' strokes barely overlap.
+    var margin = Math.max(1, Math.round(0.03 * m.fs)), edge = new Int16Array(w * ch);
+    for (var ry = 0; ry < ch; ry++) {
+      var run = 0, o = ry * w;
+      for (var rx = 0; rx < w; rx++) { run = all[(o + rx) * 4 + 3] > 128 ? run + 1 : 0; edge[o + rx] = run; }
+      for (run = 0, rx = w - 1; rx >= 0; rx--) { run = edge[o + rx] ? run + 1 : 0; edge[o + rx] = Math.min(edge[o + rx], run); }
+    }
     for (var sx = 0; sx < w; sx++) {
       var bot = g.inkBottom[sx] === g.inkBottom[sx] ? g.inkBottom[sx] : line.base, rows = Math.max(1, Math.min(ch, Math.round(bot - y0))), inked = 0, mine = 0;
-      for (var sy = 0; sy < rows; sy++) if (all[(sy * w + sx) * 4 + 3] > 128) { inked++; if (sy >= own) mine++; }
+      for (var sy = 0; sy < rows; sy++) if (edge[sy * w + sx] > margin) { inked++; if (sy >= own) mine++; }
       cover[sx] = 0.7 * mine / Math.max(1, rows - own) + 0.3 * inked / rows;
     }
     var hw = Math.max(1, Math.round(0.02 * m.fs));
