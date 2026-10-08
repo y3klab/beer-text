@@ -23,7 +23,7 @@ Or `npm install beer-text` and `import { pour } from 'beer-text'`.
 | `preset` | `'lager'` | `lager`, `wheat`, `ipa`, `amber` or `stout` |
 | `colors` | | Override any preset color (`beer`, `band`, `foam`, `cream`, `bubble`, `bubbleDeep`, `highlight`, `haze`, `fizz`) |
 | `empty` | the text color | The letters' color before the beer arrives |
-| `head` | `0.27` | The settled head, as a fraction of the letters' height |
+| `head` | see note | The settled head, as a fraction of the letters' height. Default: `0.27` for one line; for several lines, the top two-thirds of the first line |
 | `autoplay` | `true` | Pour when the heading is mostly in view; `false` shows the full pint |
 | `once` | `false` | `'session'` pours once per browser session (a reload pours again) |
 

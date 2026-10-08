@@ -62,7 +62,9 @@ function fontReady(spec) {
  * @param {string} [options.preset='lager'] - lager, wheat, ipa, amber or stout.
  * @param {object} [options.colors] - overrides for any preset color (see presets).
  * @param {string} [options.empty] - the letters' color before the beer arrives; defaults to the text color.
- * @param {number} [options.head=0.27] - the settled head, as a fraction of the letters' height.
+ * @param {number} [options.head] - the settled head, as a fraction of the letters' height. By default a one-line
+ *   heading gets 0.27; a longer one gets a head that fills the top two-thirds of its first line, so the beer
+ *   shows in that line as well as the ones below.
  * @param {boolean} [options.autoplay=true] - pour when the heading is mostly in view; false shows the full pint.
  * @param {false|'session'} [options.once=false] - 'session' pours once per browser session (a reload pours again).
  * @returns {{ finished: Promise<void>, replay: function, finish: function, destroy: function }}
@@ -70,7 +72,7 @@ function fontReady(spec) {
 export function pour(target, options) {
   var o = options || {};
   var colors = Object.assign({}, presets[o.preset] || presets.lager, o.colors || {});
-  var head = clamp(o.head == null ? 0.27 : +o.head, 0.05, 0.6);
+  var head = o.head == null ? null : clamp(+o.head, 0.05, 0.6);
   var autoplay = o.autoplay !== false;
   var id = 'beer-text-' + (++count) + '-';
   var G = null, lastW = 0, raf = 0, t0 = 0, playing = false, sim = null, dead = false;
@@ -137,7 +139,7 @@ export function pour(target, options) {
     var L = m.lines, g = {};
     var last = L[L.length - 1];
     g.top = L[0].base - m.capH; g.bottom = last.base; g.H = g.bottom - g.top;
-    g.surf = g.top + head * g.H;
+    g.surf = head != null ? g.top + head * g.H : L.length > 1 ? L[0].base - 0.32 * m.capH : g.top + 0.27 * g.H;
     g.headT = g.surf - g.top; g.hFinal = g.bottom - g.surf;
     g.minX = Math.min.apply(null, L.map(function (l) { return l.x; })) - 2;
     g.maxX = Math.max.apply(null, L.map(function (l) { return l.x + l.w; })) + 2;
