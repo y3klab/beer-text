@@ -1,0 +1,17 @@
+# Per-project system metadata maintained by project-system
+# (project.md, transient state, etc.). Never goes into the project's repo.
+.system/
+
+# Secrets - never commit credentials. (Keep .env.example tracked.)
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+id_rsa*
+id_ed25519*
+credentials.json
+secrets.json
+*.keystore

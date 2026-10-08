@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>beer-text</title>
+<meta name="description" content="Fill your headings like a pint of beer: a simulated pour with a sloshing surface, foam and carbonation.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=Inter:wght@400;600&display=swap" rel="stylesheet">
+<style>
+  :root { --bg: #1C4B69; --ink: #F4F1EA; --muted: #B9C9D4; --line: #2E6487; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 16px/1.5 Inter, system-ui, sans-serif; }
+  main { max-width: 1100px; margin: 0 auto; padding: 48px 16px 80px; }
+  .hero { font-family: Anton, Impact, sans-serif; font-weight: 400; font-size: clamp(5rem, 24vw, 17rem); line-height: 0.9; letter-spacing: 0.01em; margin: 0; color: #FFFFFF; cursor: pointer; }
+  p.lede { color: var(--muted); max-width: 40em; margin: 24px 0; }
+  .controls { display: flex; flex-wrap: wrap; gap: 8px; margin: 24px 0 48px; }
+  button { font: 600 14px Inter, sans-serif; color: var(--ink); background: transparent; border: 1px solid var(--line); border-radius: 999px; padding: 10px 16px; min-height: 44px; cursor: pointer; }
+  button[aria-pressed="true"] { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+  .row { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 24px; border-top: 1px solid var(--line); padding-top: 32px; }
+  .row h2 { font-family: Anton, Impact, sans-serif; font-weight: 400; font-size: 4rem; line-height: 1; margin: 0; color: #FFFFFF; }
+  .row figcaption { color: var(--muted); font-size: 14px; margin-top: 4px; }
+  figure { margin: 0; }
+  pre { background: #143A52; border-radius: 8px; padding: 16px; overflow-x: auto; font-size: 14px; margin-top: 48px; }
+</style>
+</head>
+<body>
+<main>
+  <h1 class="hero" id="hero">Cheers</h1>
+  <p class="lede">beer-text pours a pint into your heading: the surface sloshes, the stream builds a head that settles, and carbonation rises through the letters. Plain JS and SVG, no dependencies, and the heading stays real text. Click it to pour again.</p>
+  <div class="controls" id="presets" role="group" aria-label="Beer style"></div>
+  <div class="row" id="row"></div>
+  <pre><code>import { pour } from 'beer-text';
+
+pour(document.querySelector('h1'), { preset: 'lager' });</code></pre>
+</main>
+<script type="module">
+  import { pour, presets } from '../src/beer-text.js';
+  var hero = document.getElementById('hero'), current = 'lager', ctl = pour(hero, { preset: current });
+  hero.addEventListener('click', function () { if (!String(getSelection()).length) ctl.replay(); });
+  var bar = document.getElementById('presets'), row = document.getElementById('row');
+  Object.keys(presets).forEach(function (name) {
+    var b = document.createElement('button');
+    b.textContent = name; b.setAttribute('aria-pressed', name === current);
+    b.onclick = function () {
+      current = name;
+      bar.querySelectorAll('button').forEach(function (x) { x.setAttribute('aria-pressed', x === b); });
+      ctl.destroy(); ctl = pour(hero, { preset: name });
+    };
+    bar.appendChild(b);
+    var fig = document.createElement('figure'), h = document.createElement('h2'), cap = document.createElement('figcaption');
+    h.textContent = 'Cheers'; cap.textContent = name;
+    fig.append(h, cap); row.appendChild(fig);
+    pour(h, { preset: name });
+  });
+</script>
+</body>
+</html>
