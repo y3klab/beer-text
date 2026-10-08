@@ -208,7 +208,7 @@ export function pour(target, options) {
     // stream starts inside solid beer. Pooled circles; bubbles vanish between lines (the glyph clip)
     // and reappear in the next, and pop into the head at the surface.
     g.fs = m.fs;
-    g.sites = findSites(m, last, Math.round(clamp(g.Wg / 280, 2, 4)), g);
+    g.sites = findSites(m, last, Math.round(clamp(g.Wg / 75, 2, 4)), g);
     // Bubbles per second in the opening wall, scaled to the glass width.
     g.wall0 = 150 * Math.min(1, Math.sqrt(g.Wg / 1108));
     // Bubbles are drawn on one canvas over the heading (hundreds of SVG circles cost too much to repaint
@@ -269,9 +269,9 @@ export function pour(target, options) {
     for (var ix = 0; ix < w; ix++) if (a[ix * 4 + 3] > 128 && g.inkBottom[ix] === g.inkBottom[ix]) g.inkXs.push(ix);
     if (!g.inkXs.length) runs.forEach(function (r0) { g.inkXs.push(r0.x); });
 
-    // Streams start where a bubble stays visible on its way up: score every column by how much of it,
-    // from the surface down to the bottom of its stroke, is letter rather than gap (a stem scores high,
-    // the bar under a C's opening low), averaged across the width a stream wobbles over.
+    // Streams start where a bubble stays visible on its way up: score every column by how much of it is
+    // letter rather than gap (a stem scores high, the bar under a C's opening low), mostly within its own
+    // line and partly from the surface down, averaged across the width a stream wobbles over.
     var y0 = Math.floor(g.surf), y1 = Math.ceil(line.base + 0.5 * m.fs), ch = Math.max(1, y1 - y0);
     var cc = document.createElement('canvas'); cc.width = w; cc.height = ch;
     var ccx = cc.getContext('2d');
@@ -279,10 +279,11 @@ export function pour(target, options) {
     if ('letterSpacing' in ccx) ccx.letterSpacing = m.ls + 'px';
     m.lines.forEach(function (l) { ccx.fillText(l.text, l.x, l.base - y0); });
     var all = ccx.getImageData(0, 0, w, ch).data, cover = new Float32Array(w);
+    var own = Math.max(0, Math.round(line.base - m.capH - y0));       // the row where the stream's own line starts
     for (var sx = 0; sx < w; sx++) {
-      var bot = g.inkBottom[sx] === g.inkBottom[sx] ? g.inkBottom[sx] : line.base, rows = Math.max(1, Math.min(ch, Math.round(bot - y0))), inked = 0;
-      for (var sy = 0; sy < rows; sy++) if (all[(sy * w + sx) * 4 + 3] > 128) inked++;
-      cover[sx] = inked / rows;
+      var bot = g.inkBottom[sx] === g.inkBottom[sx] ? g.inkBottom[sx] : line.base, rows = Math.max(1, Math.min(ch, Math.round(bot - y0))), inked = 0, mine = 0;
+      for (var sy = 0; sy < rows; sy++) if (all[(sy * w + sx) * 4 + 3] > 128) { inked++; if (sy >= own) mine++; }
+      cover[sx] = 0.7 * mine / Math.max(1, rows - own) + 0.3 * inked / rows;
     }
     var hw = Math.max(1, Math.round(0.02 * m.fs));
     function score(x) {
@@ -290,7 +291,8 @@ export function pour(target, options) {
       for (var d = -hw; d <= hw; d++) { var xx = Math.round(x) + d; t += xx >= 0 && xx < w ? cover[xx] : 0; k++; }
       return t / k;
     }
-    // The best column in each solid run along the bottom, then the best runs, kept apart so streams spread out.
+    // The best column in each solid run along the bottom; then the glass is split into n equal slots and
+    // each takes its best run, so streams spread across the width. A slot with no solid stroke stays empty.
     var cands = runs.map(function (r0) {
       var xa = Math.ceil(r0.x - r0.w / 2), xb = Math.floor(r0.x + r0.w / 2), bs = -1, x1, sc = [];
       for (x1 = xa; x1 <= xb; x1++) { sc.push(score(x1)); bs = Math.max(bs, sc[sc.length - 1]); }
@@ -302,13 +304,16 @@ export function pour(target, options) {
       }
       return { x: best, w: r0.w, s: bs };
     }).sort(function (p, q) { return q.s - p.s; });
-    var gap = g.Wg / (2 * n);
-    cands.forEach(function (c0) {
-      if (sites.length < n && !sites.some(function (s0) { return Math.abs(s0.x - c0.x) < gap; })) {
-        var by0 = g.inkBottom[Math.round(c0.x)];
-        sites.push({ x: c0.x, w: c0.w, y: by0 === by0 ? by0 : y, next: Math.random() * 0.4, k: 1 });
-      }
-    });
+    var gap = g.Wg / (2 * n), slot = g.Wg / n;
+    for (var si = 0; si < n; si++) {
+      var c0 = cands.filter(function (cd) {
+        return cd.s >= 0.5 && Math.floor((cd.x - g.minX) / slot) === si && !sites.some(function (s0) { return Math.abs(s0.x - cd.x) < gap; });
+      })[0];
+      if (!c0) continue;
+      var by0 = g.inkBottom[Math.round(c0.x)];
+      sites.push({ x: c0.x, w: c0.w, y: by0 === by0 ? by0 : y, next: Math.random() * 0.4, k: 1, s: c0.s });
+    }
+    if (!sites.length && cands.length) sites.push({ x: cands[0].x, w: cands[0].w, y: y, next: 0, k: 1, s: cands[0].s });
     sites.sort(function (p, q) { return p.x - q.x; });
     // The middle streams run calmer than the outer ones.
     sites.forEach(function (s1, i1) { if (i1 > 0 && i1 < sites.length - 1) s1.k = 0.6; });
