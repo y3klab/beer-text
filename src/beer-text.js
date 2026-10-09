@@ -5,7 +5,7 @@ import { createPourSim, calibratePour } from './physics.js';
 
 // Colors per style. beer: four gradient stops, surface to bottom. band: the darker line under the
 // head (meniscus). cream: where the head meets the beer. bubble/bubbleDeep/highlight: the head's
-// texture. haze: air clouding the beer while it pours. fizz: rising and clinging bubbles.
+// texture. haze: air clouding the beer while it pours. fizz: rising bubbles.
 export var presets = {
   lager: { beer: ['#E8A638', '#ECA93C', '#E39F33', '#D4932A'], band: '#B5781F', foam: '#F3EAD3', cream: '#E2B866', bubble: '#E5D7B5', bubbleDeep: '#E3C88E', highlight: '#FFFDF5', haze: '#FBE3A6', fizz: '#FFF6E0' },
   wheat: { beer: ['#F6D27A', '#F4CC6C', '#EFC362', '#E5B655'], band: '#C99A3C', foam: '#FFFBF2', cream: '#F4DC9A', bubble: '#F2EADA', bubbleDeep: '#EBDDB8', highlight: '#FFFFFF', haze: '#FFF0C8', fizz: '#FFF8E6' },
@@ -200,10 +200,6 @@ export function pour(target, options) {
       g.bubbles.push(b);
     }
     g.meniscus = el('path', { fill: 'none', stroke: colors.band, 'stroke-opacity': 0.75, 'stroke-width': clamp(2 + (m.fs - 54) / (192 - 54), 1, 3) }, root);
-    g.cling = [];
-    for (var k = 0; k < Math.round(clamp(g.Wg / 70, 6, 16)); k++) {
-      g.cling.push(el('circle', { cx: g.minX + R() * g.Wg, cy: g.surf + 0.08 * g.H + R() * Math.max(0, g.hFinal - 0.1 * g.H), r: 0.6 + 0.5 * R(), fill: colors.fizz, 'fill-opacity': 0 }, root));
-    }
     // Carbonation: streams rise from points where the last line's strokes sit on the baseline, so every
     // stream starts inside solid beer. Pooled circles; bubbles vanish between lines (the glyph clip)
     // and reappear in the next, and pop into the head at the surface.
@@ -520,9 +516,6 @@ export function pour(target, options) {
       bu.el.setAttribute('cx', f1(x)); bu.el.setAttribute('cy', f1(y)); bu.el.setAttribute('r', f1(r));
       if (bu.hi) { bu.hi.setAttribute('cx', f1(x - r * 0.35)); bu.hi.setAttribute('cy', f1(y - r * 0.35)); bu.hi.setAttribute('r', f1(r * 0.28)); }
     }
-    // Clinging bubbles appear once the beer has calmed.
-    var cling = st.since === Infinity ? 1 : smoothstep(0.8, 1.4, st.since);
-    for (var k = 0; k < g.cling.length; k++) g.cling[k].setAttribute('fill-opacity', (+g.cling[k].getAttribute('cy') > mean + 0.02 * g.H ? 0.4 * cling : 0).toFixed(2));
   }
 
   function stillFrame() {
