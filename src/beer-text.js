@@ -299,7 +299,7 @@ export function pour(target, options) {
       for (var d = -hw; d <= hw; d++) { var xx = Math.round(x) + d; t += xx >= 0 && xx < w ? cover[xx] : 0; k++; }
       return t / k;
     }
-    // One candidate per letter foot; the glass is split into n equal slots so streams spread across the width.
+    // One candidate per letter foot.
     function letterAt(x) {                         // which letter of the line a foot belongs to
       for (var li = 0; li < line.text.length; li++) if (x < line.x + ctx.measureText(line.text.slice(0, li + 1)).width) return line.text[li].toLowerCase();
       return '';
@@ -313,35 +313,26 @@ export function pour(target, options) {
         if (x1 < sc.length && sc[x1] >= bs - 0.02) { if (start < 0) start = x1; }
         else if (start >= 0) { if (x1 - start > len) { len = x1 - start; best = xa + (start + x1 - 1) / 2; } start = -1; }
       }
-      // Prefer the middle of the letter's foot, as a real glass would: a curve or a slant there lets bubbles
-      // slip in and out of view, which reads as natural. Only a foot that would hide most of its stream
-      // (under a C's opening, say) falls back to the letter's most solid column.
+      // The middle of the letter's foot, as on the original site: a curve or a slant there lets bubbles slip
+      // in and out of view, which reads as natural. A foot that would hide most of its stream (under a C's
+      // opening, a D's hollow) falls back to the letter's most solid column.
       var cs = score(r0.x);
-      var ch = letterAt(r0.x);
-      return cs >= 0.45 ? { x: r0.x, w: r0.w, s: cs, ch: ch } : { x: best, w: r0.w, s: bs, ch: ch };
-    }).filter(function (cd) { return cd.s >= 0.45; });
-    var gap = g.Wg / (2 * n), slot = g.Wg / n;
-    // Choose the streams together, not one slot at a time: every combination of one foot per slot (or none),
-    // kept apart, scored by how far each is from mostly-visible (two-thirds: a curve or slant, not a
-    // ruler-straight stem), with a heavy cost for two streams in the same letter (a repeated letter would
-    // repeat its pattern) and for an empty slot. A few feet per slot, so this is a few hundred combinations.
-    var perSlot = [];
-    for (var si = 0; si < n; si++) perSlot.push(cands.filter(function (cd) { return Math.floor((cd.x - g.minX) / slot) === si; }));
-    var pick = [], bestPick = [], bestCost = Infinity;
-    (function walk(si, cost) {
-      if (cost >= bestCost) return;
-      if (si === n) { bestCost = cost; bestPick = pick.slice(); return; }
-      perSlot[si].forEach(function (cd) {
-        if (pick.some(function (p0) { return Math.abs(p0.x - cd.x) < gap; })) return;
-        var twice = cd.ch && pick.some(function (p0) { return p0.ch === cd.ch; }) ? 1 : 0;
-        pick.push(cd); walk(si + 1, cost + Math.abs(cd.s - 0.65) + twice); pick.pop();
-      });
-      walk(si + 1, cost + 0.5);
-    })(0, 0);
-    bestPick.forEach(function (c0) {
-      var by0 = g.inkBottom[Math.round(c0.x)];
-      sites.push({ x: c0.x, w: c0.w, y: by0 === by0 ? by0 : y, next: Math.random() * 0.4, k: 1, s: c0.s, ch: c0.ch });
+      return cs >= 0.45 ? { x: r0.x, w: r0.w, s: cs, ch: letterAt(r0.x) } : { x: best, w: r0.w, s: bs, ch: letterAt(r0.x) };
     });
+    // Feet spaced evenly along the line, as the original picks them. A foot that is still mostly hidden, sits
+    // too close to a stream, or is in a letter that already has one (a repeated letter repeats its pattern)
+    // gives way to its nearest neighbor.
+    var gap = g.Wg / (2 * n);
+    for (var si = 0; si < n; si++) {
+      var at = n > 1 ? Math.round(si * (cands.length - 1) / (n - 1)) : Math.floor(cands.length / 2);
+      for (var off = 0; off < cands.length; off++) {
+        var c0 = cands[at + (off % 2 ? (off + 1) / 2 : -off / 2)];
+        if (!c0 || c0.s < 0.45 || sites.some(function (s0) { return Math.abs(s0.x - c0.x) < gap || (c0.ch && s0.ch === c0.ch); })) continue;
+        var by0 = g.inkBottom[Math.round(c0.x)];
+        sites.push({ x: c0.x, w: c0.w, y: by0 === by0 ? by0 : y, next: Math.random() * 0.4, k: 1, s: c0.s, ch: c0.ch });
+        break;
+      }
+    }
     if (!sites.length && runs.length) sites.push({ x: runs[0].x, w: runs[0].w, y: y, next: 0, k: 1, s: 0 });
     sites.sort(function (p, q) { return p.x - q.x; });
     // The middle streams run calmer than the outer ones.
