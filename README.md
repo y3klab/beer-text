@@ -7,7 +7,7 @@ The heading stays real text: screen readers, copy and paste, find-in-page and se
 ## Use
 
 ```html
-<h1 id="title">Cheers</h1>
+<h1 id="title">Beer Text</h1>
 <script type="module">
   import { pour } from 'https://cdn.jsdelivr.net/npm/beer-text@0.1/+esm';
   pour(document.getElementById('title'), { preset: 'lager' });

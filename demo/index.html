@@ -20,8 +20,10 @@
   button[aria-pressed="true"] { background: var(--ink); color: var(--bg); border-color: var(--ink); }
   .row { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 24px; border-top: 1px solid var(--line); padding-top: 32px; }
   .row h2 { font-family: Anton, Impact, sans-serif; font-weight: 400; font-size: 3rem; line-height: 1; margin: 0; color: #FFFFFF; }
-  .row figcaption { color: var(--muted); font-size: 14px; margin-top: 4px; }
+  .row figcaption, .long figcaption { color: var(--muted); font-size: 14px; margin-top: 4px; }
   figure { margin: 0; }
+  .long { border-top: 1px solid var(--line); margin-top: 48px; padding-top: 32px; }
+  .stack { font-family: Anton, Impact, sans-serif; font-weight: 400; text-transform: uppercase; font-size: clamp(3.5rem, 15vw, 8rem); line-height: 0.95; max-width: 6.2em; margin: 0; color: #FFFFFF; cursor: pointer; }
   pre { background: #143A52; border-radius: 8px; padding: 16px; overflow-x: auto; font-size: 14px; margin-top: 48px; }
 </style>
 </head>
@@ -31,6 +33,10 @@
   <p class="lede">beer-text pours a pint into your heading: the surface sloshes, the stream builds a head that settles, and carbonation rises through the letters. Plain JS and SVG, no dependencies, and the heading stays real text. Click it to pour again.</p>
   <div class="controls" id="presets" role="group" aria-label="Beer style"></div>
   <div class="row" id="row"></div>
+  <figure class="long">
+    <h2 class="stack" id="stack">Brewed slow, poured fresh</h2>
+    <figcaption>Long titles wrap: each line fills, and the head settles in the first line.</figcaption>
+  </figure>
   <pre><code>import { pour } from 'beer-text';
 
 pour(document.querySelector('h1'), { preset: 'lager' });</code></pre>
@@ -54,6 +60,8 @@ pour(document.querySelector('h1'), { preset: 'lager' });</code></pre>
     fig.append(h, cap); row.appendChild(fig);
     pour(h, { preset: name });
   });
+  var stack = document.getElementById('stack'), sctl = pour(stack);
+  stack.addEventListener('click', function () { if (!String(getSelection()).length) sctl.replay(); });
 </script>
 </body>
 </html>
