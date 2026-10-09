@@ -375,8 +375,8 @@ export function pour(target, options) {
   // Going flat: once the pour stops, CO2 leaks out through the surface and feeds the bubbles, so less is
   // left to make new ones. Carbonation falls exponentially toward a floor; streams release less often and
   // bubbles grow more slowly. A real beer takes 20-30 minutes; like the head, this is compressed (time
-  // constant one minute), and it never goes fully flat, so a page left open stays alive but calmer.
-  var FLAT_TAU = 60, FLAT_FLOOR = 0.35;
+  // constant three minutes), and it never goes fully flat, so a page left open stays alive but calmer.
+  var FLAT_TAU = 180, FLAT_FLOOR = 0.35;
   // A stream comes from a microscopic speck in the glass; now and then a speck stalls for a few seconds
   // and restarts (on average once every 40 s, for 2-8 s, and never two streams at once).
   var STALL_EVERY = 40;
