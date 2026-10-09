@@ -362,6 +362,9 @@ export function pour(target, options) {
   // steady rate, and it speeds up as it rises: a stream's bubbles spread apart toward the top, and in the
   // pour's cloud the big ones race ahead of the fine ones.
   var GROW = 0.0008, V_REF = 1.0, R_REF = 0.009, V_MAX = 2.5;
+  // Drawn larger than modeled: at true proportions a newborn bubble is under a pixel and all but vanishes.
+  // Only the picture is scaled; speed and growth still come from the modeled size.
+  function shown(r) { return Math.max(1, 1.5 * r); }
   function fizzStep(g, dt, rate, wall) {
     var fs = g.fs, i, b;
     // The wall: air dragged in by the pour rises as fine bubbles from all across the bottom.
@@ -403,7 +406,7 @@ export function pour(target, options) {
       var sY = surfaceAt(g, b.x);
       if (b.y - b.r <= sY) {                                      // reached the surface: it joins the head
         b.live = false;
-        for (var q = 0; q < g.pops.length; q++) if (g.pops[q].age >= 0.24) { var pp = g.pops[q]; pp.age = 0; pp.x = b.x; pp.y = sY; pp.r = 1.6 * b.r; break; }
+        for (var q = 0; q < g.pops.length; q++) if (g.pops[q].age >= 0.24) { var pp = g.pops[q]; pp.age = 0; pp.x = b.x; pp.y = sY; pp.r = 1.6 * shown(b.r); break; }
       }
     }
     for (i = 0; i < g.pops.length; i++) if (g.pops[i].age < 0.24) g.pops[i].age += dt;
@@ -416,7 +419,7 @@ export function pour(target, options) {
     for (i = 0; i < g.fizz.length; i++) {
       var b = g.fizz[i];
       if (!b.live) continue;
-      ctx.moveTo(b.x + b.r, b.y); ctx.arc(b.x, b.y, b.r, 0, 6.2832); any = true;
+      var rd = shown(b.r); ctx.moveTo(b.x + rd, b.y); ctx.arc(b.x, b.y, rd, 0, 6.2832); any = true;
     }
     ctx.fillStyle = colors.fizz;
     ctx.globalAlpha = 0.8;
