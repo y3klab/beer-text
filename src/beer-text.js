@@ -372,11 +372,21 @@ export function pour(target, options) {
   // pour's cloud the big ones race ahead of the fine ones.
   var GROW = 0.0008, V_REF = 1.0, R_REF = 0.009, V_MAX = 2.5;
   var WALL_K = 2.1;
+  // Going flat: once the pour stops, CO2 leaks out through the surface and feeds the bubbles, so less is
+  // left to make new ones. Carbonation falls exponentially toward a floor; streams release less often and
+  // bubbles grow more slowly. A real beer takes 20-30 minutes; like the head, this is compressed (time
+  // constant one minute), and it never goes fully flat, so a page left open stays alive but calmer.
+  var FLAT_TAU = 60, FLAT_FLOOR = 0.35;
+  // A stream comes from a microscopic speck in the glass; now and then a speck stalls for a few seconds
+  // and restarts (on average once every 40 s, for 2-8 s, and never two streams at once).
+  var STALL_EVERY = 40;
   // Drawn larger than modeled: at true proportions a newborn bubble is under a pixel and all but vanishes.
   // Only the picture is scaled; speed and growth still come from the modeled size.
   function shown(r) { return Math.max(1, 1.5 * r); }
   function fizzStep(g, dt, rate, wall) {
     var fs = g.fs, i, b;
+    if (!(playing && sim && sim.pouring)) g.flatT = (g.flatT || 0) + dt;
+    var co2 = FLAT_FLOOR + (1 - FLAT_FLOOR) * Math.exp(-(g.flatT || 0) / FLAT_TAU);
     // The wall: air dragged in by the pour rises as fine bubbles from all across the bottom.
     if (wall > 0 && g.sites.length && surfaceAt(g, g.inkXs[0]) < g.sites[0].y - 2) {
       var due = wall * dt, n = Math.floor(due) + (Math.random() < due % 1 ? 1 : 0);
@@ -390,7 +400,9 @@ export function pour(target, options) {
     for (i = 0; i < g.sites.length; i++) {
       var st = g.sites[i];
       if (surfaceAt(g, st.x) > st.y - 2) continue;            // no beer above this point yet
-      st.next -= dt * rate * st.k;
+      if (st.off > 0) { st.off -= dt; continue; }
+      if (Math.random() < dt / STALL_EVERY && !g.sites.some(function (s0) { return s0.off > 0; })) { st.off = 2 + 6 * Math.random(); continue; }
+      st.next -= dt * rate * st.k * co2;
       // Each stream comes from one speck in the glass with a beat of its own, steady but not exact,
       // and now and then it stutters.
       if (!st.period) st.period = 0.3 + 0.4 * Math.random();
@@ -406,7 +418,7 @@ export function pour(target, options) {
     for (i = 0; i < g.fizz.length; i++) {
       b = g.fizz[i];
       if (!b.live) continue;
-      b.r = Math.min(0.03 * fs, b.r + GROW * fs * dt);
+      b.r = Math.min(0.03 * fs, b.r + GROW * co2 * fs * dt);
       var vt = Math.min(V_MAX, V_REF * Math.pow(b.r / (R_REF * fs), 2)) * fs;
       b.v += (vt - b.v) * Math.min(1, dt / 0.05);
       b.y -= b.v * dt; b.ph += b.f * dt;
@@ -450,7 +462,7 @@ export function pour(target, options) {
     }
   }
 
-  function fizzReset(g) { g.fizz.forEach(function (b) { b.live = false; }); g.pops.forEach(function (p) { p.age = 1; }); fizzDraw(g); }
+  function fizzReset(g) { g.flatT = 0; g.sites.forEach(function (s0) { s0.off = 0; }); g.fizz.forEach(function (b) { b.live = false; }); g.pops.forEach(function (p) { p.age = 1; }); fizzDraw(g); }
 
   // After the pour the fizz runs alone at 30 fps, only while the heading is on screen and the tab visible.
   function canFizz() { return !!G && !dead && !reduce && !document.hidden && onScreen; }
