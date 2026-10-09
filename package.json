@@ -13,6 +13,7 @@
     "test": "node --test test/*.test.js"
   },
   "keywords": ["beer", "text", "text-effect", "animation", "pour", "foam", "liquid", "svg", "heading"],
+  "author": "Y3K Lab",
   "license": "MIT",
   "repository": { "type": "git", "url": "git+https://github.com/y3klab/beer-text.git" }
 }
