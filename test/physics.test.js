@@ -25,10 +25,11 @@ function run(g) {
 
 const cases = {
   'wide homepage title (1108 x 480)': geo(480, 1108, 0.2),
-  'one line, phone width (339 x 120)': geo(120, 339, 0.27),
-  'square glass (200 x 200)': geo(200, 200, 0.27),
-  'tall narrow word (60 x 200)': geo(200, 60, 0.27),
-  'single letter (25 x 180)': geo(180, 25, 0.27)
+  'one line, phone width (339 x 120)': geo(120, 339, 0.32),
+  'two lines, phone width (339 x 220)': geo(220, 339, 0.22),
+  'square glass (200 x 200)': geo(200, 200, 0.32),
+  'tall narrow word (60 x 200)': geo(200, 60, 0.32),
+  'single letter (25 x 180)': geo(180, 25, 0.32)
 };
 
 for (const [name, g] of Object.entries(cases)) {

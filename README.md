@@ -23,7 +23,7 @@ Or `npm install beer-text` and `import { pour } from 'beer-text'`.
 | `preset` | `'lager'` | `lager`, `wheat`, `ipa`, `amber` or `stout` |
 | `colors` | | Override any preset color (`beer`, `band`, `foam`, `cream`, `bubble`, `bubbleDeep`, `highlight`, `haze`, `fizz`) |
 | `empty` | the text color | The letters' color before the beer arrives |
-| `head` | see note | The settled head, as a fraction of the letters' height. Default: `0.27` for one line; for several lines, the top two-thirds of the first line |
+| `head` | see note | The settled head, as a fraction of the letters' height. Default: `0.32` for one line, `0.22` for two, `0.20` for three or more |
 | `autoplay` | `true` | Pour when the heading is mostly in view; `false` shows the full pint |
 | `once` | `false` | `'session'` pours once per browser session (a reload pours again) |
 
@@ -44,6 +44,8 @@ title.addEventListener('click', () => pint.replay());
 
 ## Notes
 
+- Long titles wrap wherever the browser breaks them. For even line lengths, add `text-wrap: balance` to the heading's CSS.
+- Put real spaces between words. Gaps made only with CSS margins or padding between inline elements are not reproduced in the beer.
 - One font per heading. The heading's own font is used, so any web font or system font works.
 - Animation runs only while the heading is on screen and the tab is visible.
 - The letter shapes are cut with a hidden copy of the heading's text, kept outside the heading, so the heading reads once to search engines, link previews and scripts. Find-in-page may count the heading twice.

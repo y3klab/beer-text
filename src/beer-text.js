@@ -44,6 +44,12 @@ function smooth(pts, lead) {   // Catmull-Rom through the samples, as cubic Bezi
   return d;
 }
 function rev(a) { return a.slice().reverse(); }
+// Draw one measured line on a canvas. With letter-spacing, each character goes where the browser laid
+// it out: canvas letterSpacing is missing in some browsers, and without it the shapes bunch up.
+function fillLine(cx, l, m, dy) {
+  if (!m.ls) { cx.fillText(l.text, l.x, l.base - dy); return; }
+  l.chars.forEach(function (c) { if (c.c !== ' ') cx.fillText(transform(c.c, m.tt), c.x, l.base - dy); });
+}
 function transform(text, tt) {
   if (tt === 'uppercase') return text.toUpperCase();
   if (tt === 'lowercase') return text.toLowerCase();
@@ -74,8 +80,7 @@ function fontReady(spec) {
  * @param {object} [options.colors] - overrides for any preset color (see presets).
  * @param {string} [options.empty] - the letters' color before the beer arrives; defaults to the text color.
  * @param {number} [options.head] - the settled head, as a fraction of the letters' height. By default a one-line
- *   heading gets 0.27; a longer one gets a head that fills the top two-thirds of its first line, so the beer
- *   shows in that line as well as the ones below.
+ *   heading gets 0.32, two lines 0.22, three or more 0.20.
  * @param {boolean} [options.autoplay=true] - pour when the heading is mostly in view; false shows the full pint.
  * @param {false|'session'} [options.once=false] - 'session' pours once per browser session (a reload pours again).
  * @returns {{ finished: Promise<void>, replay: function, finish: function, destroy: function }}
@@ -129,7 +134,8 @@ export function pour(target, options) {
       while (ch.length && ch[0].c === ' ') ch.shift();
       while (ch.length && ch[ch.length - 1].c === ' ') ch.pop();
       if (!ch.length) return null;
-      return { text: transform(ch.map(function (c) { return c.c; }).join('').replace(/ +/g, ' '), cs.textTransform), x: ch[0].l - ox, w: ch[ch.length - 1].r - ch[0].l, top: ln.top };
+      return { text: transform(ch.map(function (c) { return c.c; }).join('').replace(/ +/g, ' '), cs.textTransform), x: ch[0].l - ox, w: ch[ch.length - 1].r - ch[0].l, top: ln.top,
+               chars: ch.map(function (c) { return { c: c.c, x: c.l - ox }; }) };
     }).filter(Boolean);
     if (!lines.length) return null;
     var probe = document.createElement('span');
@@ -143,14 +149,24 @@ export function pour(target, options) {
     var ctx = document.createElement('canvas').getContext('2d');
     ctx.font = font(fs);
     var W = target.clientWidth, H = target.clientHeight;
-    return { W: W, H: H, fs: fs, ls: ls, lines: lines, capH: ctx.measureText(lines[0].text).actualBoundingBoxAscent };
+    // bodyH: the height the head is measured against. The capital height, not the line's tallest mark, so an
+    // accent or a tall ascender doesn't squeeze the head; for mostly lowercase text in a font with short
+    // lowercase (x-height under 0.8 of the capitals, as in most text faces), the lowercase height instead.
+    var asc = function (t) { return ctx.measureText(t).actualBoundingBoxAscent; };
+    var capH = asc(lines[0].text), hH = asc('H'), xH = asc('x');
+    var letters = lines[0].text.replace(/[^\p{L}]/gu, ''), lower = letters.replace(/[^\p{Ll}]/gu, '').length;
+    var bodyH = Math.min(capH, lower > letters.length / 2 && xH < 0.8 * hH ? xH : hH) || capH;
+    return { W: W, H: H, fs: fs, ls: ls, tt: cs.textTransform, lines: lines, capH: capH, bodyH: bodyH };
   }
 
   function build(m) {
     var L = m.lines, g = {};
     var last = L[L.length - 1];
     g.top = L[0].base - m.capH; g.bottom = last.base; g.H = g.bottom - g.top;
-    g.surf = head != null ? g.top + head * g.H : L.length > 1 ? L[0].base - 0.32 * m.capH : g.top + 0.27 * g.H;
+    // Default head, as a share of the title's height: 32% for one line, 22% for two, 20% for three or more,
+    // so the head's share shrinks as the title stacks (David, 2026-10-09).
+    var vt = L[0].base - m.bodyH, vH = g.bottom - vt;   // the top and height the eye reads as the glass
+    g.surf = head != null ? g.top + head * g.H : vt + (L.length > 2 ? 0.20 : L.length > 1 ? 0.22 : 0.32) * vH;
     g.headT = g.surf - g.top; g.hFinal = g.bottom - g.surf;
     g.minX = Math.min.apply(null, L.map(function (l) { return l.x; })) - 2;
     g.maxX = Math.max.apply(null, L.map(function (l) { return l.x + l.w; })) + 2;
@@ -234,9 +250,8 @@ export function pour(target, options) {
     var mc = g.mask.getContext('2d');
     mc.setTransform(dpr, 0, 0, dpr, 0, 0);
     mc.font = font(m.fs);
-    if ('letterSpacing' in mc) mc.letterSpacing = m.ls + 'px';
     mc.fillStyle = '#000';
-    L.forEach(function (l) { mc.fillText(l.text, l.x, l.base); });
+    L.forEach(function (l) { fillLine(mc, l, m, 0); });
     g.fizz = []; g.pops = []; g.drawn = false;
     // Pool large enough that the wall never hits it: a full pool stalls new bubbles and the wall breaks into waves.
     for (var q2 = 0; q2 < Math.round(clamp(g.Wg * 1.5, 600, 1600)); q2++) { g.fizz.push({ live: false }); g.pops.push({ age: 1 }); }
@@ -259,8 +274,7 @@ export function pour(target, options) {
     var ctx = cb.getContext('2d', { willReadFrequently: true });
     ctx.scale(k, k);
     ctx.font = font(m.fs);
-    if ('letterSpacing' in ctx) ctx.letterSpacing = m.ls + 'px';
-    ctx.fillText(line.text, line.x, line.base - top);
+    fillLine(ctx, line, m, top);
     var col = ctx.getImageData(0, 0, kw, kh).data, ro = Math.min(kh - 1, Math.max(0, Math.round((y - top) * k))) * kw * 4;
     var a = col.subarray(ro, ro + kw * 4), runs = [], start = -1;
     for (var x = 0; x <= kw; x++) {
@@ -291,8 +305,7 @@ export function pour(target, options) {
     var ccx = cc.getContext('2d', { willReadFrequently: true });
     ccx.scale(k, k);
     ccx.font = font(m.fs);
-    if ('letterSpacing' in ccx) ccx.letterSpacing = m.ls + 'px';
-    m.lines.forEach(function (l) { ccx.fillText(l.text, l.x, l.base - y0); });
+    m.lines.forEach(function (l) { fillLine(ccx, l, m, y0); });
     var all = ccx.getImageData(0, 0, cw, ch).data, cover = new Float32Array(cw);
     var own = Math.max(0, Math.round((line.base - m.capH - y0) * k));       // the row where the stream's own line starts
     // Ink only counts with a little stroke on both sides of it, so a stream sits inside its letters
@@ -393,6 +406,8 @@ export function pour(target, options) {
   var STALL_EVERY = 40;
   // Drawn larger than modeled: at true proportions a newborn bubble is under a pixel and all but vanishes.
   // Only the picture is scaled; speed and growth still come from the modeled size.
+  // Sizes are kept to scale with the letters for the physics (speed comes from size relative to the font);
+  // only the drawing has a floor, so small text gets the same slow, dense streams as large text.
   function shown(r) { return Math.max(1, 1.5 * r); }
   function fizzStep(g, dt, rate, wall) {
     var fs = g.fs, i, b;
@@ -402,7 +417,7 @@ export function pour(target, options) {
     if (wall > 0 && g.sites.length && surfaceAt(g, g.inkXs[0]) < g.sites[0].y - 2) {
       var due = wall * dt, n = Math.floor(due) + (Math.random() < due % 1 ? 1 : 0);
       for (var w0 = 0; w0 < n; w0++) {
-        var wx = g.inkXs[Math.floor(Math.random() * g.inkXs.length)], wr = Math.max(0.8, fs * (0.003 + 0.005 * Math.random()));
+        var wx = g.inkXs[Math.floor(Math.random() * g.inkXs.length)], wr = fs * (0.003 + 0.005 * Math.random());
         var wy = g.inkBottom[Math.round(wx)];
         // From the bottom of the stroke; a small spread still keeps the first bubbles out of level rows.
         if (!spawn(g, wx, (wy === wy ? wy : g.sites[0].y) - wr, wr)) break;
@@ -421,7 +436,7 @@ export function pour(target, options) {
         st.next += st.period * (0.85 + 0.3 * Math.random()) + (Math.random() < 0.06 ? 0.4 + 0.8 * Math.random() : 0);
         // Real nucleation is untidy: bubbles leave anywhere across the bottom of the stroke and wander as
         // they rise. A neat single file reads as machined, so keep the scatter and only aim its middle.
-        var sr = Math.max(0.6, fs * (0.003 + 0.003 * Math.random())), sx0 = st.x + (Math.random() - 0.5) * 0.4 * st.w;
+        var sr = fs * (0.003 + 0.003 * Math.random()), sx0 = st.x + (Math.random() - 0.5) * 0.4 * st.w;
         var sb = g.inkBottom[Math.round(sx0)];
         spawn(g, sx0, (sb > 0 ? sb : st.y) - sr, sr);
       }
