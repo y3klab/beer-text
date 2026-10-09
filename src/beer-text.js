@@ -362,6 +362,7 @@ export function pour(target, options) {
   // steady rate, and it speeds up as it rises: a stream's bubbles spread apart toward the top, and in the
   // pour's cloud the big ones race ahead of the fine ones.
   var GROW = 0.0008, V_REF = 1.0, R_REF = 0.009, V_MAX = 2.5;
+  var WALL_K = 2.1;
   // Drawn larger than modeled: at true proportions a newborn bubble is under a pixel and all but vanishes.
   // Only the picture is scaled; speed and growth still come from the modeled size.
   function shown(r) { return Math.max(1, 1.5 * r); }
@@ -542,9 +543,13 @@ export function pour(target, options) {
     sim.advanceTo(T);
     if (!sim.pouring && sim.t - sim.stopT >= LAND_END) { stillFrame(); return; }
     draw(G, frameState(G, sim, false));
-    // Carbonation: a wall of fine bubbles for as long as the beer is pouring (the stream drags air in),
-    // fading fast once the pour stops (time constant 0.9 s) to the steady streams.
-    fizzStep(G, sim.t - before, 1.4, sim.pouring ? G.wall0 : G.wall0 * Math.exp(-(sim.t - sim.stopT) / 0.9));
+    // Carbonation: the wall is air the falling stream drags under. It scales with how much beer is
+    // arriving and with the stream's impact energy, which grows with how far it falls (from just above
+    // the rim to the surface), so it is strongest early, tapers as the glass fills and the pour eases,
+    // and stops the moment the stream does. What lingers is the cloud already in the beer, clearing at
+    // each bubble's own speed.
+    var fall = Math.max(0, 1.15 * G.H - sim.hl);
+    fizzStep(G, sim.t - before, 1.4, G.wall0 * WALL_K * (sim.Q / sim.QMAX) * (fall / (1.15 * G.H)));
     fizzDraw(G);
     raf = requestAnimationFrame(frame);
   }
