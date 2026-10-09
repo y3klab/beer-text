@@ -338,15 +338,15 @@ export function pour(target, options) {
   }
 
   // Bubble physics in font-size units: start slow, accelerate, wobble, fan out a little.
-  function spawn(g, x, y, r, jitter, fan) {
+  function spawn(g, x, y, r) {
     for (var k = 0; k < g.fizz.length; k++) if (!g.fizz[k].live) {
       var b = g.fizz[k], fs = g.fs;
       // Each bubble differs a little in where it starts and how fast it rises; identical bubbles
       // released in the same frame would otherwise rise in perfectly level rows.
       var sp = 0.8 + 0.4 * Math.random();
-      y -= Math.random() * jitter * fs;
+      y -= Math.random() * 0.04 * fs;
       b.live = true; b.x0 = x; b.x = x; b.y = y; b.y0 = y; b.r = r; b.v = 0.25 * fs * sp; b.acc = 0.4 * fs * sp; b.vmax = 0.6 * fs * sp;
-      b.drift = (Math.random() - 0.5) * 0.08 * fan * fs; b.amp = 0.004 * fs; b.f = 0.8 + 1.4 * Math.random(); b.ph = Math.random() * 6.28;
+      b.drift = (Math.random() - 0.5) * 0.08 * fs; b.amp = 0.004 * fs; b.f = 0.8 + 1.4 * Math.random(); b.ph = Math.random() * 6.28;
       return true;
     }
     return false;
@@ -361,7 +361,7 @@ export function pour(target, options) {
         var wx = g.inkXs[Math.floor(Math.random() * g.inkXs.length)], wr = Math.max(0.8, fs * (0.003 + 0.005 * Math.random()));
         var wy = g.inkBottom[Math.round(wx)];
         // From the bottom of the stroke; a small spread still keeps the first bubbles out of level rows.
-        if (!spawn(g, wx, (wy === wy ? wy : g.sites[0].y) - wr, wr, 0.012, 1)) break;
+        if (!spawn(g, wx, (wy === wy ? wy : g.sites[0].y) - wr, wr)) break;
       }
     }
     for (i = 0; i < g.sites.length; i++) {
@@ -370,9 +370,11 @@ export function pour(target, options) {
       st.next -= dt * rate * st.k;
       while (st.next <= 0) {
         st.next += 0.3 + 0.4 * Math.random();
-        // A stream rises from one spot and nearly straight up, so it stays in the column chosen for it.
-        var sr = Math.max(1, fs * (0.006 + 0.006 * Math.random()));
-        spawn(g, st.x + (Math.random() - 0.5) * 0.03 * fs, st.y - sr, sr, 0.02, 0.25);
+        // Real nucleation is untidy: bubbles leave anywhere across the bottom of the stroke and wander as
+        // they rise. A neat single file reads as machined, so keep the scatter and only aim its middle.
+        var sr = Math.max(1, fs * (0.006 + 0.006 * Math.random())), sx0 = st.x + (Math.random() - 0.5) * 0.4 * st.w;
+        var sb = g.inkBottom[Math.round(sx0)];
+        spawn(g, sx0, (sb > 0 ? sb : st.y) - sr, sr);
       }
     }
     for (i = 0; i < g.fizz.length; i++) {
