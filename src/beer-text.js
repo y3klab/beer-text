@@ -300,7 +300,8 @@ export function pour(target, options) {
       return t / k;
     }
     // The best column in each solid run along the bottom; then the glass is split into n equal slots and
-    // each takes its best run, so streams spread across the width. A slot with no solid stroke stays empty.
+    // each takes its best run (of near-equal runs, the one nearest the slot's middle), so streams spread
+    // evenly across the width. A slot with no solid stroke stays empty.
     var cands = runs.map(function (r0) {
       var xa = Math.ceil(r0.x - r0.w / 2), xb = Math.floor(r0.x + r0.w / 2), bs = -1, x1, sc = [];
       for (x1 = xa; x1 <= xb; x1++) { sc.push(score(x1)); bs = Math.max(bs, sc[sc.length - 1]); }
@@ -314,10 +315,12 @@ export function pour(target, options) {
     }).sort(function (p, q) { return q.s - p.s; });
     var gap = g.Wg / (2 * n), slot = g.Wg / n;
     for (var si = 0; si < n; si++) {
-      var c0 = cands.filter(function (cd) {
+      var inSlot = cands.filter(function (cd) {
         return cd.s >= 0.5 && Math.floor((cd.x - g.minX) / slot) === si && !sites.some(function (s0) { return Math.abs(s0.x - cd.x) < gap; });
-      })[0];
-      if (!c0) continue;
+      });
+      if (!inSlot.length) continue;
+      var mid = g.minX + (si + 0.5) * slot, c0 = inSlot.filter(function (cd) { return cd.s >= inSlot[0].s - 0.05; })
+        .sort(function (p, q) { return Math.abs(p.x - mid) - Math.abs(q.x - mid); })[0];
       var by0 = g.inkBottom[Math.round(c0.x)];
       sites.push({ x: c0.x, w: c0.w, y: by0 === by0 ? by0 : y, next: Math.random() * 0.4, k: 1, s: c0.s });
     }
