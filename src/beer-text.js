@@ -299,9 +299,8 @@ export function pour(target, options) {
       for (var d = -hw; d <= hw; d++) { var xx = Math.round(x) + d; t += xx >= 0 && xx < w ? cover[xx] : 0; k++; }
       return t / k;
     }
-    // The best column in each solid run along the bottom; then the glass is split into n equal slots and
-    // each takes its best run (of near-equal runs, the one nearest the slot's middle), so streams spread
-    // evenly across the width. A slot with no solid stroke stays empty.
+    // One candidate per letter foot; then the glass is split into n equal slots so streams spread across
+    // the width, and each slot takes its most natural-looking foot. A slot with no usable foot stays empty.
     var cands = runs.map(function (r0) {
       var xa = Math.ceil(r0.x - r0.w / 2), xb = Math.floor(r0.x + r0.w / 2), bs = -1, x1, sc = [];
       for (x1 = xa; x1 <= xb; x1++) { sc.push(score(x1)); bs = Math.max(bs, sc[sc.length - 1]); }
@@ -311,20 +310,24 @@ export function pour(target, options) {
         if (x1 < sc.length && sc[x1] >= bs - 0.02) { if (start < 0) start = x1; }
         else if (start >= 0) { if (x1 - start > len) { len = x1 - start; best = xa + (start + x1 - 1) / 2; } start = -1; }
       }
-      return { x: best, w: r0.w, s: bs };
-    }).sort(function (p, q) { return q.s - p.s; });
+      // Prefer the middle of the letter's foot, as a real glass would: a curve or a slant there lets bubbles
+      // slip in and out of view, which reads as natural. Only a foot that would hide most of its stream
+      // (under a C's opening, say) falls back to the letter's most solid column.
+      var cs = score(r0.x);
+      return cs >= 0.45 ? { x: r0.x, w: r0.w, s: cs, foot: true } : { x: best, w: r0.w, s: bs, foot: false };
+    }).filter(function (cd) { return cd.s >= 0.45; });
     var gap = g.Wg / (2 * n), slot = g.Wg / n;
     for (var si = 0; si < n; si++) {
       var inSlot = cands.filter(function (cd) {
-        return cd.s >= 0.5 && Math.floor((cd.x - g.minX) / slot) === si && !sites.some(function (s0) { return Math.abs(s0.x - cd.x) < gap; });
+        return Math.floor((cd.x - g.minX) / slot) === si && !sites.some(function (s0) { return Math.abs(s0.x - cd.x) < gap; });
       });
       if (!inSlot.length) continue;
-      var mid = g.minX + (si + 0.5) * slot, c0 = inSlot.filter(function (cd) { return cd.s >= inSlot[0].s - 0.05; })
-        .sort(function (p, q) { return Math.abs(p.x - mid) - Math.abs(q.x - mid); })[0];
+      // Mostly visible, not a ruler-straight stem: a stream that drifts in and out of its letters looks poured, not drawn.
+      var c0 = inSlot.sort(function (p, q) { return Math.abs(p.s - 0.65) - Math.abs(q.s - 0.65); })[0];
       var by0 = g.inkBottom[Math.round(c0.x)];
-      sites.push({ x: c0.x, w: c0.w, y: by0 === by0 ? by0 : y, next: Math.random() * 0.4, k: 1, s: c0.s });
+      sites.push({ x: c0.x, w: c0.w, y: by0 === by0 ? by0 : y, next: Math.random() * 0.4, k: 1, s: c0.s , foot: c0.foot });
     }
-    if (!sites.length && cands.length) sites.push({ x: cands[0].x, w: cands[0].w, y: y, next: 0, k: 1, s: cands[0].s });
+    if (!sites.length && runs.length) sites.push({ x: runs[0].x, w: runs[0].w, y: y, next: 0, k: 1, s: 0 });
     sites.sort(function (p, q) { return p.x - q.x; });
     // The middle streams run calmer than the outer ones.
     sites.forEach(function (s1, i1) { if (i1 > 0 && i1 < sites.length - 1) s1.k = 0.6; });
