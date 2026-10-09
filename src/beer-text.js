@@ -362,18 +362,6 @@ export function pour(target, options) {
   // steady rate, and it speeds up as it rises: a stream's bubbles spread apart toward the top, and in the
   // pour's cloud the big ones race ahead of the fine ones.
   var GROW = 0.0008, V_REF = 1.0, R_REF = 0.009, V_MAX = 2.5;
-  // The sideways flow under the waves, from the simulation: the surface rises where water converges, so
-  // (shallow water, conservation of volume) the depth-averaged flow at each column boundary is the
-  // running sum of the surface's rise speed, over the depth.
-  function flowAt(g, x) {
-    // Below about a third of the final depth the waves are as tall as the beer is deep and this
-    // (linear) estimate runs away, so the depth it divides by never goes lower than that.
-    if (!playing || !sim || sim.hl < 0.05 * g.H) return 0;
-    var n = sim.N, dx = g.Wg / (n - 1), f = (x - g.minX) / dx, j = Math.max(0, Math.min(n - 1, Math.round(f))), q = 0;
-    for (var i = 0; i <= j; i++) q -= sim.v[i] * dx;
-    return q / Math.max(sim.hl, 0.3 * g.hFinal);
-  }
-
   function fizzStep(g, dt, rate, wall) {
     var fs = g.fs, i, b;
     // The wall: air dragged in by the pour rises as fine bubbles from all across the bottom.
@@ -409,9 +397,8 @@ export function pour(target, options) {
       var vt = Math.min(V_MAX, V_REF * Math.pow(b.r / (R_REF * fs), 2)) * fs;
       b.v += (vt - b.v) * Math.min(1, dt / 0.05);
       b.y -= b.v * dt; b.ph += b.f * dt;
-      // The beer carries it with the waves; the slow drift stands in for the convection currents of a
-      // real glass, which the simulation doesn't model.
-      b.x0 += (flowAt(g, b.x0) + b.drift * Math.min(1, (b.y0 - b.y) / (2 * fs))) * dt;
+      // The slow drift stands in for the convection currents of a real glass, which the simulation doesn't model.
+      b.x0 += b.drift * dt * Math.min(1, (b.y0 - b.y) / (2 * fs));
       b.x = b.x0 + Math.sin(b.ph) * b.amp;
       var sY = surfaceAt(g, b.x);
       if (b.y - b.r <= sY) {                                      // reached the surface: it joins the head
