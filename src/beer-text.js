@@ -299,8 +299,11 @@ export function pour(target, options) {
       for (var d = -hw; d <= hw; d++) { var xx = Math.round(x) + d; t += xx >= 0 && xx < w ? cover[xx] : 0; k++; }
       return t / k;
     }
-    // One candidate per letter foot; then the glass is split into n equal slots so streams spread across
-    // the width, and each slot takes its most natural-looking foot. A slot with no usable foot stays empty.
+    // One candidate per letter foot; the glass is split into n equal slots so streams spread across the width.
+    function letterAt(x) {                         // which letter of the line a foot belongs to
+      for (var li = 0; li < line.text.length; li++) if (x < line.x + ctx.measureText(line.text.slice(0, li + 1)).width) return line.text[li].toLowerCase();
+      return '';
+    }
     var cands = runs.map(function (r0) {
       var xa = Math.ceil(r0.x - r0.w / 2), xb = Math.floor(r0.x + r0.w / 2), bs = -1, x1, sc = [];
       for (x1 = xa; x1 <= xb; x1++) { sc.push(score(x1)); bs = Math.max(bs, sc[sc.length - 1]); }
@@ -314,19 +317,31 @@ export function pour(target, options) {
       // slip in and out of view, which reads as natural. Only a foot that would hide most of its stream
       // (under a C's opening, say) falls back to the letter's most solid column.
       var cs = score(r0.x);
-      return cs >= 0.45 ? { x: r0.x, w: r0.w, s: cs, foot: true } : { x: best, w: r0.w, s: bs, foot: false };
+      var ch = letterAt(r0.x);
+      return cs >= 0.45 ? { x: r0.x, w: r0.w, s: cs, ch: ch } : { x: best, w: r0.w, s: bs, ch: ch };
     }).filter(function (cd) { return cd.s >= 0.45; });
     var gap = g.Wg / (2 * n), slot = g.Wg / n;
-    for (var si = 0; si < n; si++) {
-      var inSlot = cands.filter(function (cd) {
-        return Math.floor((cd.x - g.minX) / slot) === si && !sites.some(function (s0) { return Math.abs(s0.x - cd.x) < gap; });
+    // Choose the streams together, not one slot at a time: every combination of one foot per slot (or none),
+    // kept apart, scored by how far each is from mostly-visible (two-thirds: a curve or slant, not a
+    // ruler-straight stem), with a heavy cost for two streams in the same letter (a repeated letter would
+    // repeat its pattern) and for an empty slot. A few feet per slot, so this is a few hundred combinations.
+    var perSlot = [];
+    for (var si = 0; si < n; si++) perSlot.push(cands.filter(function (cd) { return Math.floor((cd.x - g.minX) / slot) === si; }));
+    var pick = [], bestPick = [], bestCost = Infinity;
+    (function walk(si, cost) {
+      if (cost >= bestCost) return;
+      if (si === n) { bestCost = cost; bestPick = pick.slice(); return; }
+      perSlot[si].forEach(function (cd) {
+        if (pick.some(function (p0) { return Math.abs(p0.x - cd.x) < gap; })) return;
+        var twice = cd.ch && pick.some(function (p0) { return p0.ch === cd.ch; }) ? 1 : 0;
+        pick.push(cd); walk(si + 1, cost + Math.abs(cd.s - 0.65) + twice); pick.pop();
       });
-      if (!inSlot.length) continue;
-      // Mostly visible, not a ruler-straight stem: a stream that drifts in and out of its letters looks poured, not drawn.
-      var c0 = inSlot.sort(function (p, q) { return Math.abs(p.s - 0.65) - Math.abs(q.s - 0.65); })[0];
+      walk(si + 1, cost + 0.5);
+    })(0, 0);
+    bestPick.forEach(function (c0) {
       var by0 = g.inkBottom[Math.round(c0.x)];
-      sites.push({ x: c0.x, w: c0.w, y: by0 === by0 ? by0 : y, next: Math.random() * 0.4, k: 1, s: c0.s , foot: c0.foot });
-    }
+      sites.push({ x: c0.x, w: c0.w, y: by0 === by0 ? by0 : y, next: Math.random() * 0.4, k: 1, s: c0.s, ch: c0.ch });
+    });
     if (!sites.length && runs.length) sites.push({ x: runs[0].x, w: runs[0].w, y: y, next: 0, k: 1, s: 0 });
     sites.sort(function (p, q) { return p.x - q.x; });
     // The middle streams run calmer than the outer ones.
