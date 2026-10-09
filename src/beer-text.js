@@ -236,64 +236,73 @@ export function pour(target, options) {
   // above its baseline and take the centers of the inked runs, spread across the word.
   function findSites(m, line, n, g) {
     var y = line.base - 0.05 * m.capH, w = Math.ceil(m.W), sites = [];
-    var c = document.createElement('canvas'); c.width = w; c.height = 1;
-    var ctx = c.getContext('2d');
+    // The bottom of the line, drawn once: the row just above the baseline gives the feet, and the lowest
+    // ink in every column (round bottoms and descenders included) is where bubbles start. Reading pixels
+    // back is the slow part, so each canvas is read once and kept off the GPU (willReadFrequently).
+    // Measured as if the letters were at most 80px (k): this is setup, run before the pour, and full
+    // resolution on a big heading costs tens of milliseconds even on a fast machine. Positions come out
+    // within a couple of pixels, well inside each bubble's own random start.
+    var k = Math.min(1, 80 / m.fs), kw = Math.ceil(w * k);
+    var top = Math.floor(line.base - 0.3 * m.capH), hh = Math.ceil(0.3 * m.capH + 0.5 * m.fs), kh = Math.ceil(hh * k);
+    var cb = document.createElement('canvas'); cb.width = kw; cb.height = kh;
+    var ctx = cb.getContext('2d', { willReadFrequently: true });
+    ctx.scale(k, k);
     ctx.font = font(m.fs);
     if ('letterSpacing' in ctx) ctx.letterSpacing = m.ls + 'px';
-    ctx.fillText(line.text, line.x, line.base - y);
-    var a = ctx.getImageData(0, 0, w, 1).data, runs = [], start = -1;
-    for (var x = 0; x <= w; x++) {
-      var ink = x < w && a[x * 4 + 3] > 128;
+    ctx.fillText(line.text, line.x, line.base - top);
+    var col = ctx.getImageData(0, 0, kw, kh).data, ro = Math.min(kh - 1, Math.max(0, Math.round((y - top) * k))) * kw * 4;
+    var a = col.subarray(ro, ro + kw * 4), runs = [], start = -1;
+    for (var x = 0; x <= kw; x++) {
+      var ink = x < kw && a[x * 4 + 3] > 128;
       if (ink && start < 0) start = x;
-      if (!ink && start >= 0) { if (x - start >= 0.035 * m.fs) runs.push({ x: (start + x) / 2, w: x - start }); start = -1; }
+      if (!ink && start >= 0) { if (x - start >= 0.035 * m.fs * k) runs.push({ x: (start + x) / 2 / k, w: (x - start) / k }); start = -1; }
     }
     if (!runs.length) runs = [{ x: line.x + line.w * 0.3, w: 4 }, { x: line.x + line.w * 0.7, w: 4 }];
-    // The lowest ink in every column near the baseline (round bottoms and descenders included), so
-    // bubbles start at the very bottom of the stroke they rise through.
-    var top = Math.floor(line.base - 0.3 * m.capH), hh = Math.ceil(0.3 * m.capH + 0.5 * m.fs);
-    var cb = document.createElement('canvas'); cb.width = w; cb.height = hh;
-    var cbx = cb.getContext('2d');
-    cbx.font = font(m.fs);
-    if ('letterSpacing' in cbx) cbx.letterSpacing = m.ls + 'px';
-    cbx.fillText(line.text, line.x, line.base - top);
-    var col = cbx.getImageData(0, 0, w, hh).data;
-    g.inkBottom = new Float32Array(w).fill(NaN);
-    for (var bx = 0; bx < w; bx++) {
-      for (var by = hh - 1; by >= 0; by--) if (col[(by * w + bx) * 4 + 3] > 128) { g.inkBottom[bx] = top + by; break; }
+    var kb = new Float32Array(kw).fill(NaN), found = new Uint8Array(kw);
+    for (var by = kh - 1; by >= 0; by--) {        // row by row from the bottom: memory order, so it stays fast
+      for (var bx = 0, bo = by * kw * 4 + 3; bx < kw; bx++, bo += 4) if (!found[bx] && col[bo] > 128) { found[bx] = 1; kb[bx] = top + (by + 0.5) / k; }
     }
+    g.inkBottom = new Float32Array(w);
     g.inkXs = [];                                  // every solid point along the bottom: where the wall of bubbles rises from
-    for (var ix = 0; ix < w; ix++) if (a[ix * 4 + 3] > 128 && g.inkBottom[ix] === g.inkBottom[ix]) g.inkXs.push(ix);
+    for (var ix = 0; ix < w; ix++) {
+      var kx = Math.min(kw - 1, Math.floor(ix * k));
+      g.inkBottom[ix] = kb[kx];
+      if (a[kx * 4 + 3] > 128 && kb[kx] === kb[kx]) g.inkXs.push(ix);
+    }
     if (!g.inkXs.length) runs.forEach(function (r0) { g.inkXs.push(r0.x); });
 
     // Streams start where a bubble stays visible on its way up: score every column by how much of it is
     // letter rather than gap (a stem scores high, the bar under a C's opening low), mostly within its own
     // line and partly from the surface down, averaged across the width a stream wobbles over.
-    var y0 = Math.floor(g.surf), y1 = Math.ceil(line.base + 0.5 * m.fs), ch = Math.max(1, y1 - y0);
-    var cc = document.createElement('canvas'); cc.width = w; cc.height = ch;
-    var ccx = cc.getContext('2d');
+    var y0 = Math.floor(g.surf), y1 = Math.ceil(line.base + 0.5 * m.fs);
+    var cw = Math.ceil(w * k), ch = Math.max(1, Math.ceil((y1 - y0) * k));
+    var cc = document.createElement('canvas'); cc.width = cw; cc.height = ch;
+    var ccx = cc.getContext('2d', { willReadFrequently: true });
+    ccx.scale(k, k);
     ccx.font = font(m.fs);
     if ('letterSpacing' in ccx) ccx.letterSpacing = m.ls + 'px';
     m.lines.forEach(function (l) { ccx.fillText(l.text, l.x, l.base - y0); });
-    var all = ccx.getImageData(0, 0, w, ch).data, cover = new Float32Array(w);
-    var own = Math.max(0, Math.round(line.base - m.capH - y0));       // the row where the stream's own line starts
+    var all = ccx.getImageData(0, 0, cw, ch).data, cover = new Float32Array(cw);
+    var own = Math.max(0, Math.round((line.base - m.capH - y0) * k));       // the row where the stream's own line starts
     // Ink only counts with a little stroke on both sides of it, so a stream sits inside its letters
     // rather than on a sliver where two lines' strokes barely overlap.
-    var margin = Math.max(1, Math.round(0.03 * m.fs)), edge = new Int16Array(w * ch);
+    var margin = Math.max(1, Math.round(0.03 * m.fs * k)), edge = new Int16Array(cw * ch);
     for (var ry = 0; ry < ch; ry++) {
-      var run = 0, o = ry * w;
-      for (var rx = 0; rx < w; rx++) { run = all[(o + rx) * 4 + 3] > 128 ? run + 1 : 0; edge[o + rx] = run; }
-      for (run = 0, rx = w - 1; rx >= 0; rx--) { run = edge[o + rx] ? run + 1 : 0; edge[o + rx] = Math.min(edge[o + rx], run); }
+      var run = 0, o = ry * cw;
+      for (var rx = 0; rx < cw; rx++) { run = all[(o + rx) * 4 + 3] > 128 ? run + 1 : 0; edge[o + rx] = run; }
+      for (run = 0, rx = cw - 1; rx >= 0; rx--) { run = edge[o + rx] ? run + 1 : 0; edge[o + rx] = Math.min(edge[o + rx], run); }
     }
-    for (var sx = 0; sx < w; sx++) {
-      var bot = g.inkBottom[sx] === g.inkBottom[sx] ? g.inkBottom[sx] : line.base, rows = Math.max(1, Math.min(ch, Math.round(bot - y0))), inked = 0, mine = 0;
-      for (var sy = 0; sy < rows; sy++) if (edge[sy * w + sx] > margin) { inked++; if (sy >= own) mine++; }
+    for (var sx = 0; sx < cw; sx++) {
+      var ib = g.inkBottom[Math.min(w - 1, Math.floor((sx + 0.5) / k))], bot = ib === ib ? ib : line.base;
+      var rows = Math.max(1, Math.min(ch, Math.round((bot - y0) * k))), inked = 0, mine = 0;
+      for (var sy = 0; sy < rows; sy++) if (edge[sy * cw + sx] > margin) { inked++; if (sy >= own) mine++; }
       cover[sx] = 0.7 * mine / Math.max(1, rows - own) + 0.3 * inked / rows;
     }
-    var hw = Math.max(1, Math.round(0.02 * m.fs));
+    var hw = Math.max(1, Math.round(0.02 * m.fs * k));
     function score(x) {
-      var t = 0, k = 0;
-      for (var d = -hw; d <= hw; d++) { var xx = Math.round(x) + d; t += xx >= 0 && xx < w ? cover[xx] : 0; k++; }
-      return t / k;
+      var t = 0, n0 = 0;
+      for (var d = -hw; d <= hw; d++) { var xx = Math.round(x * k) + d; t += xx >= 0 && xx < cw ? cover[xx] : 0; n0++; }
+      return t / n0;
     }
     // One candidate per letter foot.
     function letterAt(x) {                         // which letter of the line a foot belongs to
