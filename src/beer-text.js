@@ -9,8 +9,8 @@ import { createPourSim, calibratePour } from './physics.js';
 export var presets = {
   lager: { beer: ['#E8A638', '#ECA93C', '#E39F33', '#D4932A'], band: '#B5781F', foam: '#F3EAD3', cream: '#E2B866', bubble: '#E5D7B5', bubbleDeep: '#E3C88E', highlight: '#FFFDF5', haze: '#FBE3A6', fizz: '#FFF6E0' },
   wheat: { beer: ['#F6D27A', '#F4CC6C', '#EFC362', '#E5B655'], band: '#C99A3C', foam: '#FFFBF2', cream: '#F4DC9A', bubble: '#F2EADA', bubbleDeep: '#EBDDB8', highlight: '#FFFFFF', haze: '#FFF0C8', fizz: '#FFF8E6' },
-  ipa: { beer: ['#F4B860', '#F1AE4E', '#E9A444', '#DC9638'], band: '#C27C2A', foam: '#FAF3E2', cream: '#EFC57E', bubble: '#EDE2C6', bubbleDeep: '#E7CF9C', highlight: '#FFFFFA', haze: '#FCE6B8', fizz: '#FFF4DC' },
-  amber: { beer: ['#C8682A', '#C36226', '#B85A21', '#A64E1B'], band: '#7A3A12', foam: '#F1E2C6', cream: '#D69A5E', bubble: '#E4D1AE', bubbleDeep: '#D9BC8E', highlight: '#FFF9EE', haze: '#E8A070', fizz: '#F6DCC0' },
+  ipa: { beer: ['#EE9636', '#EA8F30', '#E0852A', '#CF7822'], band: '#A65E18', foam: '#FAF1DC', cream: '#EBB06A', bubble: '#EEDFC0', bubbleDeep: '#E8C994', highlight: '#FFFFFA', haze: '#F7CF94', fizz: '#FFF0D6' },
+  amber: { beer: ['#D87A32', '#D3732D', '#C86A28', '#B65D22'], band: '#8A4416', foam: '#F1E2C6', cream: '#D69A5E', bubble: '#E4D1AE', bubbleDeep: '#D9BC8E', highlight: '#FFF9EE', haze: '#F0AA74', fizz: '#F6DCC0' },
   stout: { beer: ['#2A1810', '#22130C', '#1A0E09', '#120905'], band: '#0A0503', foam: '#E9D8B8', cream: '#C9A374', bubble: '#DCC7A0', bubbleDeep: '#C9AE82', highlight: '#FFF8EA', haze: '#6B4A2E', fizz: '#D9C2A0' }
 };
 
