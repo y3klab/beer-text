@@ -46,6 +46,7 @@ title.addEventListener('click', () => pint.replay());
 
 - One font per heading. The heading's own font is used, so any web font or system font works.
 - Animation runs only while the heading is on screen and the tab is visible.
+- The letter shapes are cut with a hidden copy of the heading's text, kept outside the heading, so the heading reads once to search engines, link previews and scripts. Find-in-page may count the heading twice.
 - The physics module is exported on its own (`beer-text/physics`) and runs in Node. Its time is compressed: a real head settles over minutes, this one in about a second, with the same shape of decay.
 
 ## Develop

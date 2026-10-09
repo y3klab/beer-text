@@ -18,6 +18,17 @@ var NS = 'http://www.w3.org/2000/svg';
 var HOLD = 350, LAND_START = 1.9, LAND_END = 2.5;   // ms before the pour starts; landing, in s after it stops
 var count = 0;
 
+// The letter shapes are a clipPath of <text>, which reads as text to anything that reads the heading
+// (search engines, link previews, innerText). So they live in one hidden SVG at the end of the body,
+// not inside the heading. Never display:none: some browsers then drop the clipPath.
+function holder() {
+  var h = document.querySelector('svg[data-beer-text="defs"]');
+  if (!h) {
+    h = el('svg', { 'data-beer-text': 'defs', 'aria-hidden': 'true', focusable: 'false', width: 0, height: 0, style: 'position:absolute;width:0;height:0;overflow:hidden' });
+    document.body.appendChild(h);
+  }
+  return h;
+}
 function el(n, a, p) { var e = document.createElementNS(NS, n); for (var k in a) e.setAttribute(k, a[k]); if (p) p.appendChild(e); return e; }
 function rng(seed) { return function () { seed |= 0; seed = seed + 0x6D2B79F5 | 0; var r = Math.imul(seed ^ seed >>> 15, 1 | seed); r = r + Math.imul(r ^ r >>> 7, 61 | r) ^ r; return ((r ^ r >>> 14) >>> 0) / 4294967296; }; }
 function smoothstep(a, b, x) { var t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); }
@@ -157,7 +168,7 @@ export function pour(target, options) {
     var overlay = 'position:absolute;left:0;top:0;pointer-events:none;-webkit-user-select:none;user-select:none;text-transform:none';
     var s = g.svg = el('svg', { 'data-beer-text': '', width: m.W, height: m.H, viewBox: '0 0 ' + m.W + ' ' + m.H, 'aria-hidden': 'true', focusable: 'false', style: overlay + ';overflow:visible' });
     var defs = el('defs', {}, s);
-    var clip = el('clipPath', { id: id + 'glyphs', clipPathUnits: 'userSpaceOnUse' }, defs);
+    var clip = g.clip = el('clipPath', { id: id + 'glyphs', clipPathUnits: 'userSpaceOnUse' });   // attached to holder() on mount
     L.forEach(function (l) {
       var t = el('text', { x: l.x, y: l.base, 'font-family': cs.fontFamily, 'font-size': m.fs, 'font-weight': cs.fontWeight, 'font-style': cs.fontStyle, 'letter-spacing': m.ls, textLength: l.w, lengthAdjust: 'spacing' }, clip);
       t.textContent = l.text;
@@ -593,8 +604,9 @@ export function pour(target, options) {
     requestAnimationFrame(function () {
       if (dead) return;
       // Swap rule: the overlay appears and the HTML text goes transparent in the same frame.
-      if (G) { G.svg.remove(); G.canvas.remove(); }
+      if (G) { G.svg.remove(); G.canvas.remove(); G.clip.remove(); }   // the old clip goes first: the new one reuses its id
       G = next;
+      holder().appendChild(G.clip);
       if (!saved) {
         saved = { position: target.style.position, color: target.style.color, fill: target.style.webkitTextFillColor };
         if (cs.position === 'static') target.style.position = 'relative';
@@ -624,7 +636,11 @@ export function pour(target, options) {
     if (io) io.disconnect();
     if (waiter) waiter.disconnect();
     document.removeEventListener('visibilitychange', onVisibility);
-    if (G) { G.svg.remove(); G.canvas.remove(); G = null; }
+    if (G) {
+      G.svg.remove(); G.canvas.remove(); G.clip.remove(); G = null;
+      var h = document.querySelector('svg[data-beer-text="defs"]');
+      if (h && !h.firstChild) h.remove();
+    }
     if (saved) {
       target.style.position = saved.position; target.style.color = saved.color; target.style.webkitTextFillColor = saved.fill;
       saved = null;

@@ -16,10 +16,10 @@ Open-source JS library that fills a heading's letters like a pint of beer - simu
 ## Conventions
 - The heading's real text is never replaced; overlays are `aria-hidden` and marked `data-beer-text`.
 - Every SVG id is prefixed per instance; never add a fixed id.
+- The letter-shape clip (a `<text>` copy of the heading) lives in one hidden `svg[data-beer-text="defs"]` at the end of the body, never inside the heading, so search engines, previews and `innerText` read the heading once (David, 2026-10-09). Find-in-page still counts it twice.
 - The physics stays bit-identical on shapes that already worked; compare against the previous copy before changing constants.
 
 ## Before public launch
 - Making the repo public and publishing to npm are irreversible: confirm with David first.
 - Real-device checks: Safari (macOS, iOS) and Firefox, wide letter-spacing, large headings for stutter.
-- The SVG clip's `<text>` shows up in the heading's `innerText` (as on the Base Model site); decide whether to move it out.
 - Base Model's homepage to switch to importing this package.
