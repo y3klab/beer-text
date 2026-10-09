@@ -300,9 +300,13 @@ export function pour(target, options) {
       return t / k;
     }
     // One candidate per letter foot.
-    function letterAt(x) {                         // which letter of the line a foot belongs to
-      for (var li = 0; li < line.text.length; li++) if (x < line.x + ctx.measureText(line.text.slice(0, li + 1)).width) return line.text[li].toLowerCase();
-      return '';
+    function letterAt(x) {                         // which letter of the line a foot belongs to, and that letter's middle
+      for (var li = 0, l0 = line.x; li < line.text.length; li++) {
+        var l1 = line.x + ctx.measureText(line.text.slice(0, li + 1)).width;
+        if (x < l1) return { ch: line.text[li].toLowerCase(), mid: (l0 + l1) / 2 };
+        l0 = l1;
+      }
+      return { ch: '', mid: x };
     }
     var cands = runs.map(function (r0) {
       var xa = Math.ceil(r0.x - r0.w / 2), xb = Math.floor(r0.x + r0.w / 2), bs = -1, x1, sc = [];
@@ -313,11 +317,15 @@ export function pour(target, options) {
         if (x1 < sc.length && sc[x1] >= bs - 0.02) { if (start < 0) start = x1; }
         else if (start >= 0) { if (x1 - start > len) { len = x1 - start; best = xa + (start + x1 - 1) / 2; } start = -1; }
       }
-      // The middle of the letter's foot, as on the original site: a curve or a slant there lets bubbles slip
+      // The letter's foot, as on the original site: a curve or a slant there lets bubbles slip
       // in and out of view, which reads as natural. A foot that would hide most of its stream (under a C's
       // opening, a D's hollow) falls back to the letter's most solid column.
-      var cs = score(r0.x);
-      return cs >= 0.45 ? { x: r0.x, w: r0.w, s: cs, ch: letterAt(r0.x) } : { x: best, w: r0.w, s: bs, ch: letterAt(r0.x) };
+      // On a letter with two feet (N, A, H), the inner side of the foot, where the stroke turns in: the
+      // stream rises along the diagonal or into the letter rather than straight up a leg.
+      var lt = letterAt(r0.x), fx = r0.x, side = lt.mid - r0.x;
+      if (Math.abs(side) > 0.25 * r0.w) fx = r0.x + (side > 0 ? 0.3 : -0.3) * r0.w;
+      var cs = score(fx);
+      return cs >= 0.45 ? { x: fx, w: r0.w, s: cs, ch: lt.ch } : { x: best, w: r0.w, s: bs, ch: lt.ch };
     });
     // Feet spaced evenly along the line, as the original picks them. A foot that is still mostly hidden, sits
     // too close to a stream, or is in a letter that already has one (a repeated letter repeats its pattern)
