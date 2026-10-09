@@ -346,15 +346,32 @@ export function pour(target, options) {
   function spawn(g, x, y, r) {
     for (var k = 0; k < g.fizz.length; k++) if (!g.fizz[k].live) {
       var b = g.fizz[k], fs = g.fs;
-      // Each bubble differs a little in where it starts and how fast it rises; identical bubbles
-      // released in the same frame would otherwise rise in perfectly level rows.
-      var sp = 0.8 + 0.4 * Math.random();
+      // Each bubble starts a little higher or lower; bubbles released in the same frame would otherwise
+      // rise in perfectly level rows.
       y -= Math.random() * 0.04 * fs;
-      b.live = true; b.x0 = x; b.x = x; b.y = y; b.y0 = y; b.r = r; b.v = 0.25 * fs * sp; b.acc = 0.4 * fs * sp; b.vmax = 0.6 * fs * sp;
+      b.live = true; b.x0 = x; b.x = x; b.y = y; b.y0 = y; b.r = r; b.v = 0;
       b.drift = (Math.random() - 0.5) * 0.08 * fs; b.amp = 0.004 * fs; b.f = 0.8 + 1.4 * Math.random(); b.ph = Math.random() * 6.28;
       return true;
     }
     return false;
+  }
+
+  // Bubble physics, in font-size units with the pour's compressed time. A beer bubble is coated in
+  // proteins, so it rises like a small rigid sphere: terminal speed grows with the square of its radius
+  // (Stokes), reached almost at once. Dissolved CO2 diffuses in on the way up, so its radius grows at a
+  // steady rate, and it speeds up as it rises: a stream's bubbles spread apart toward the top, and in the
+  // pour's cloud the big ones race ahead of the fine ones.
+  var GROW = 0.0008, V_REF = 1.0, R_REF = 0.009, V_MAX = 2.5;
+  // The sideways flow under the waves, from the simulation: the surface rises where water converges, so
+  // (shallow water, conservation of volume) the depth-averaged flow at each column boundary is the
+  // running sum of the surface's rise speed, over the depth.
+  function flowAt(g, x) {
+    // Below about a third of the final depth the waves are as tall as the beer is deep and this
+    // (linear) estimate runs away, so the depth it divides by never goes lower than that.
+    if (!playing || !sim || sim.hl < 0.05 * g.H) return 0;
+    var n = sim.N, dx = g.Wg / (n - 1), f = (x - g.minX) / dx, j = Math.max(0, Math.min(n - 1, Math.round(f))), q = 0;
+    for (var i = 0; i <= j; i++) q -= sim.v[i] * dx;
+    return q / Math.max(sim.hl, 0.3 * g.hFinal);
   }
 
   function fizzStep(g, dt, rate, wall) {
@@ -373,11 +390,14 @@ export function pour(target, options) {
       var st = g.sites[i];
       if (surfaceAt(g, st.x) > st.y - 2) continue;            // no beer above this point yet
       st.next -= dt * rate * st.k;
+      // Each stream comes from one speck in the glass with a beat of its own, steady but not exact,
+      // and now and then it stutters.
+      if (!st.period) st.period = 0.3 + 0.4 * Math.random();
       while (st.next <= 0) {
-        st.next += 0.3 + 0.4 * Math.random();
+        st.next += st.period * (0.85 + 0.3 * Math.random()) + (Math.random() < 0.06 ? 0.4 + 0.8 * Math.random() : 0);
         // Real nucleation is untidy: bubbles leave anywhere across the bottom of the stroke and wander as
         // they rise. A neat single file reads as machined, so keep the scatter and only aim its middle.
-        var sr = Math.max(1, fs * (0.006 + 0.006 * Math.random())), sx0 = st.x + (Math.random() - 0.5) * 0.4 * st.w;
+        var sr = Math.max(0.6, fs * (0.003 + 0.003 * Math.random())), sx0 = st.x + (Math.random() - 0.5) * 0.4 * st.w;
         var sb = g.inkBottom[Math.round(sx0)];
         spawn(g, sx0, (sb > 0 ? sb : st.y) - sr, sr);
       }
@@ -385,8 +405,13 @@ export function pour(target, options) {
     for (i = 0; i < g.fizz.length; i++) {
       b = g.fizz[i];
       if (!b.live) continue;
-      b.v = Math.min(b.v + b.acc * dt, b.vmax); b.y -= b.v * dt; b.ph += b.f * dt;
-      b.x0 += b.drift * dt * Math.min(1, (b.y0 - b.y) / (2 * fs));
+      b.r = Math.min(0.03 * fs, b.r + GROW * fs * dt);
+      var vt = Math.min(V_MAX, V_REF * Math.pow(b.r / (R_REF * fs), 2)) * fs;
+      b.v += (vt - b.v) * Math.min(1, dt / 0.05);
+      b.y -= b.v * dt; b.ph += b.f * dt;
+      // The beer carries it with the waves; the slow drift stands in for the convection currents of a
+      // real glass, which the simulation doesn't model.
+      b.x0 += (flowAt(g, b.x0) + b.drift * Math.min(1, (b.y0 - b.y) / (2 * fs))) * dt;
       b.x = b.x0 + Math.sin(b.ph) * b.amp;
       var sY = surfaceAt(g, b.x);
       if (b.y - b.r <= sY) {                                      // reached the surface: it joins the head
