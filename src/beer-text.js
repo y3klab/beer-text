@@ -513,7 +513,9 @@ export function pour(target, options) {
       var tY = top[j0][1] + (top[j1][1] - top[j0][1]) * w, sY = surf[j0][1] + (surf[j1][1] - surf[j0][1]) * w;
       // Never-popping bubbles have pop = Infinity; in the still frame since is Infinity too, and Infinity - Infinity is NaN.
       var thick = sY - tY, popped = bu.pop !== Infinity && st.since >= bu.pop ? Math.max(0, 1 - (st.since - bu.pop) / 0.18) : 1;
-      var r = thick < 2 ? 0 : bu.r0 * Math.sqrt(Math.min(1, thick / g.headT)) * (0.8 + 0.2 * age) * popped;
+      // A foam bubble under a 2px radius reads as a grey speck, not a bubble (a small heading on a
+      // phone makes most of them that small), so it isn't drawn: a real head that size looks smooth too.
+      var r = thick < 2 || bu.r0 < 2 ? 0 : bu.r0 * Math.sqrt(Math.min(1, thick / g.headT)) * (0.8 + 0.2 * age) * popped;
       var y = tY + bu.d * thick;
       bu.el.setAttribute('cx', f1(x)); bu.el.setAttribute('cy', f1(y)); bu.el.setAttribute('r', f1(r));
       if (bu.hi) { bu.hi.setAttribute('cx', f1(x - r * 0.35)); bu.hi.setAttribute('cy', f1(y - r * 0.35)); bu.hi.setAttribute('r', f1(r * 0.28)); }
