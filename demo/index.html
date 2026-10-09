@@ -19,7 +19,7 @@
   button { font: 600 14px Inter, sans-serif; color: var(--ink); background: transparent; border: 1px solid var(--line); border-radius: 999px; padding: 10px 16px; min-height: 44px; cursor: pointer; }
   button[aria-pressed="true"] { background: var(--ink); color: var(--bg); border-color: var(--ink); }
   .row { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 24px; border-top: 1px solid var(--line); padding-top: 32px; }
-  .row h2 { font-family: Anton, Impact, sans-serif; font-weight: 400; font-size: 4rem; line-height: 1; margin: 0; color: #FFFFFF; }
+  .row h2 { font-family: Anton, Impact, sans-serif; font-weight: 400; font-size: 3rem; line-height: 1; margin: 0; color: #FFFFFF; }
   .row figcaption { color: var(--muted); font-size: 14px; margin-top: 4px; }
   figure { margin: 0; }
   pre { background: #143A52; border-radius: 8px; padding: 16px; overflow-x: auto; font-size: 14px; margin-top: 48px; }
@@ -27,7 +27,7 @@
 </head>
 <body>
 <main>
-  <h1 class="hero" id="hero">Cheers</h1>
+  <h1 class="hero" id="hero">Beer Text</h1>
   <p class="lede">beer-text pours a pint into your heading: the surface sloshes, the stream builds a head that settles, and carbonation rises through the letters. Plain JS and SVG, no dependencies, and the heading stays real text. Click it to pour again.</p>
   <div class="controls" id="presets" role="group" aria-label="Beer style"></div>
   <div class="row" id="row"></div>
@@ -50,7 +50,7 @@ pour(document.querySelector('h1'), { preset: 'lager' });</code></pre>
     };
     bar.appendChild(b);
     var fig = document.createElement('figure'), h = document.createElement('h2'), cap = document.createElement('figcaption');
-    h.textContent = 'Cheers'; cap.textContent = name;
+    h.textContent = 'Beer Text'; cap.textContent = name;
     fig.append(h, cap); row.appendChild(fig);
     pour(h, { preset: name });
   });
