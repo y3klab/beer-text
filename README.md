@@ -48,6 +48,7 @@ title.addEventListener('click', () => pint.replay());
 - Put real spaces between words. Gaps made only with CSS margins or padding between inline elements are not reproduced in the beer.
 - One font per heading. The heading's own font is used, so any web font or system font works.
 - Animation runs only while the heading is on screen and the tab is visible.
+- The overlay is rebuilt whenever the heading's width or height changes. A font change that leaves the heading's box the same size (a fixed `line-height` with a new `font-size`, say) is not noticed: call `destroy()` and `pour()` again.
 - The letter shapes are cut with a hidden copy of the heading's text (hidden from screen readers too), kept at the end of the page rather than inside the heading, so the heading's own text is unchanged. Find-in-page may count the heading twice, and anything that reads the whole page's text may see the copy as well; how search engines treat it has not been tested.
 - The physics module is exported on its own (`beer-text/physics`) and runs in Node. Its time is compressed: a real head settles over minutes, this one in about a second, with the same shape of decay.
 

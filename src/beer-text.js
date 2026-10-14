@@ -60,7 +60,7 @@ function transform(text, tt) {
 
 // Wait for the heading's own font. fonts.ready can resolve before a display=swap face is even requested,
 // so ask for the face and poll check(); a system font passes check() at once. Both get the heading's own
-// characters, so a font split into character subsets loads the subsets the heading uses. Gives up after 2.5 s even if
+// characters as shown, so a font split into character subsets loads the subsets the heading uses. Gives up after 2.5 s even if
 // a load never settles, and a font API that throws counts as no font.
 function fontReady(spec, text) {
   return new Promise(function (done) {
@@ -131,13 +131,14 @@ export function pour(target, options) {
     cs = getComputedStyle(target);
     var hr = target.getBoundingClientRect(), ox = hr.left + target.clientLeft, oy = hr.top + target.clientTop;
     var fs = parseFloat(cs.fontSize), ls = parseFloat(cs.letterSpacing) || 0;
-    var walker = document.createTreeWalker(target, NodeFilter.SHOW_TEXT, {
-      acceptNode: function (n) { return n.parentNode.closest('[data-beer-text]') ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT; }
+    var walker = document.createTreeWalker(target, NodeFilter.SHOW_TEXT | NodeFilter.SHOW_ELEMENT, {
+      acceptNode: function (n) { return (n.nodeType === 1 ? n : n.parentNode).closest('[data-beer-text]') ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT; }
     });
-    // t: the character as shown. Capitalize depends on the character before it, so it is decided here, in reading
-    // order, rather than one character at a time (which would uppercase every letter).
+    // t: the character as shown, for the letter-spaced path, which draws one character at a time. Capitalize
+    // depends on the character before it (a space or a <br> starts a word), so it is decided here in reading order.
     var range = document.createRange(), lines = [], cur = null, n, prevSpace = true;
     while ((n = walker.nextNode())) {
+      if (n.nodeType === 1) { if (n.tagName === 'BR') prevSpace = true; continue; }
       var s = n.nodeValue;
       for (var i = 0; i < s.length; i++) {
         var len = s.codePointAt(i) > 0xFFFF ? 2 : 1;
@@ -158,7 +159,10 @@ export function pour(target, options) {
       while (ch.length && ch[0].c === ' ') ch.shift();
       while (ch.length && ch[ch.length - 1].c === ' ') ch.pop();
       if (!ch.length) return null;
-      return { text: ch.map(function (c) { return c.t; }).join('').replace(/ +/g, ' '), x: ch[0].l - ox, w: ch[ch.length - 1].r - ch[0].l, top: ln.top,
+      // The whole line is transformed at once where it can be, so letters whose case depends on their neighbors
+      // (a Greek final sigma) come out right; capitalize comes from the words as read above.
+      var raw = ch.map(function (c) { return cs.textTransform === 'capitalize' ? c.t : c.c; }).join('').replace(/ +/g, ' ');
+      return { text: transform(raw, cs.textTransform), x: ch[0].l - ox, w: ch[ch.length - 1].r - ch[0].l, top: ln.top,
                chars: ch.map(function (c) { return { c: c.c, t: c.t, x: c.l - ox }; }) };
     }).filter(Boolean);
     if (!lines.length) return null;
@@ -749,7 +753,7 @@ export function pour(target, options) {
   }
 
   var txt = target.textContent;
-  fontReady(font(10), txt + transform(txt, cs.textTransform)).then(safe(function (ok) {
+  fontReady(font(10), transform(txt, cs.textTransform)).then(safe(function (ok) {
     if (!ok) { destroy(); return; }      // the font never arrived: the plain heading stays
     ready = true;
     if (want) { start(want === 'play'); return; }

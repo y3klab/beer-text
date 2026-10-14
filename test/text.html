@@ -44,6 +44,26 @@
     return got === 'BeerText' ? true : 'letter shapes read "' + got + '" (want "BeerText")';
   });
 
+  await test('lowercase keeps context-dependent letters: final sigma (ΟΣ becomes ος)', async function () {
+    var h = heading('ΟΣ', 'text-transform:lowercase'), c = pour(h, { autoplay: false });
+    await sleep(500);
+    var t = clipText(), got = t ? t.textContent : 'no clip';
+    c.destroy();
+    return got === 'ος' ? true : 'letter shapes read "' + got + '" (want "ος")';
+  });
+
+  await test('capitalize after a line break: each line starts a word, with and without letter-spacing', async function () {
+    var got = [];
+    for (var css of ['text-transform:capitalize', 'text-transform:capitalize;letter-spacing:0.1em']) {
+      var h = heading('', css); h.innerHTML = 'beer<br>text';
+      var c = pour(h, { autoplay: false });
+      await sleep(500);
+      got.push(Array.from(document.querySelectorAll('svg[data-beer-text="defs"] clipPath text')).map(function (t) { return t.textContent; }).join('/'));
+      c.destroy(); stage.textContent = '';
+    }
+    return got.every(function (g) { return g === 'Beer/Text'; }) ? true : 'letter shapes read ' + JSON.stringify(got) + ' (want "Beer/Text" twice)';
+  });
+
   await test('a smaller font at the same width rebuilds the letter shapes at the new size', async function () {
     var h = heading('Lager', 'width:400px'), c = pour(h, { autoplay: false });
     await sleep(500);
@@ -54,14 +74,14 @@
     return got === '24' ? true : 'letter shapes at font-size ' + got + ' (want 24)';
   });
 
-  await test('the font check asks about the heading\'s own characters', async function () {
+  await test('the font check asks about the heading\'s characters as shown (uppercased)', async function () {
     var asked = [], realLoad = document.fonts.load, realCheck = document.fonts.check;
     document.fonts.load = function (f, t) { asked.push(t || ''); return realLoad.apply(this, arguments); };
     document.fonts.check = function (f, t) { asked.push(t || ''); return realCheck.apply(this, arguments); };
     var h = heading('Système', 'text-transform:uppercase'), c;
     try { c = pour(h, { autoplay: false }); await sleep(500); } finally { document.fonts.load = realLoad; document.fonts.check = realCheck; }
     c.destroy();
-    var all = asked.length && asked.every(function (t) { return t.indexOf('Système') >= 0 && t.indexOf('SYSTÈME') >= 0; });
+    var all = asked.length && asked.every(function (t) { return t.indexOf('SYSTÈME') >= 0 && t.indexOf('Système') < 0; });
     return all ? true : 'text passed to the font API: ' + JSON.stringify(asked);
   });
 
