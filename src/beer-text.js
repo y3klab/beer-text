@@ -185,9 +185,13 @@ export function pour(target, options) {
     var s = g.svg = el('svg', { 'data-beer-text': '', width: m.W, height: m.H, viewBox: '0 0 ' + m.W + ' ' + m.H, 'aria-hidden': 'true', focusable: 'false', style: overlay + ';overflow:visible' });
     var defs = el('defs', {}, s);
     var clip = g.clip = el('clipPath', { id: id + 'glyphs', clipPathUnits: 'userSpaceOnUse' });   // attached to holder() on mount
+    // Placed like fillLine, never stretched to the measured width: iOS Safari reports the last letter's right
+    // edge too far out (Anton: 5.8px at 54px) and ignores letter-spacing on SVG text, so a textLength stretch
+    // pulled the beer letters off the real ones. With letter-spacing, each character at its measured left.
     L.forEach(function (l) {
-      var t = el('text', { x: l.x, y: l.base, 'font-family': cs.fontFamily, 'font-size': m.fs, 'font-weight': cs.fontWeight, 'font-style': cs.fontStyle, 'letter-spacing': m.ls, textLength: l.w, lengthAdjust: 'spacing' }, clip);
-      t.textContent = l.text;
+      var t = el('text', { x: l.x, y: l.base, 'font-family': cs.fontFamily, 'font-size': m.fs, 'font-weight': cs.fontWeight, 'font-style': cs.fontStyle }, clip);
+      if (!m.ls) { t.textContent = l.text; return; }
+      l.chars.forEach(function (c) { if (c.c !== ' ') el('tspan', { x: c.x }, t).textContent = transform(c.c, m.tt); });
     });
     var beer = el('linearGradient', { id: id + 'beer', gradientUnits: 'userSpaceOnUse', x1: 0, y1: g.surf, x2: 0, y2: g.bottom }, defs);
     ['0', '0.30', '0.65', '1'].forEach(function (off, i) { el('stop', { offset: off, 'stop-color': colors.beer[i] }, beer); });
