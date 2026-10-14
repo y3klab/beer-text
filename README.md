@@ -27,7 +27,7 @@ Or `npm install beer-text` and `import { pour } from 'beer-text'`.
 | `autoplay` | `true` | Pour when the heading is mostly in view; `false` shows the full pint |
 | `once` | `false` | `'session'` pours once per browser session (a reload pours again) |
 
-`pour()` returns a controller: `finished` (a promise for the current pour), `replay()`, `finish()` (jump to the full pint) and `destroy()` (remove everything and restore the heading).
+`pour()` returns a controller: `finished` (a promise for the current pour), `replay()`, `finish()` (jump to the full pint) and `destroy()` (remove everything and restore the heading). Calling `replay()` or `finish()` before the heading is first drawn is remembered. Calling `pour()` again on the same heading replaces its controller.
 
 Pour again on click:
 
@@ -38,9 +38,9 @@ title.addEventListener('click', () => pint.replay());
 
 ## Accessibility
 
-- With `prefers-reduced-motion`, the heading shows the full pint without pouring.
-- In forced-colors (high contrast) mode, nothing is drawn and the plain heading shows in system colors.
-- If the font never loads, or the heading cannot be measured, the plain heading stays.
+- With `prefers-reduced-motion`, the heading shows the full pint without pouring; switching it on mid-pour stops the pour.
+- In forced-colors (high contrast) mode, nothing is drawn and the plain heading shows in system colors, including when the mode is switched on later.
+- If the font never loads, the heading cannot be measured, or drawing throws, the plain heading stays.
 
 ## Notes
 
@@ -54,7 +54,7 @@ title.addEventListener('click', () => pint.replay());
 ## Develop
 
 - Demo: serve the repo root (`python3 -m http.server`) and open `/demo/`.
-- Tests: `npm test` (physics, in Node).
+- Tests: `npm test` (physics, in Node), and `test/lifecycle.html` in a foreground browser window (serve the repo root, open `/test/lifecycle.html`; the title reads ALL PASS or N FAIL).
 
 ## License
 

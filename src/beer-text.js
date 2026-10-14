@@ -17,6 +17,7 @@ export var presets = {
 var NS = 'http://www.w3.org/2000/svg';
 var HOLD = 350, LAND_START = 1.9, LAND_END = 2.5;   // ms before the pour starts; landing, in s after it stops
 var count = 0;
+var owners = new WeakMap();   // heading -> its controller: a second pour() on a heading replaces the first
 
 // The letter shapes are a clipPath of <text>, which reads as text to anything that reads the heading
 // (search engines, link previews, innerText). So they live in one hidden SVG at the end of the body,
@@ -94,15 +95,29 @@ export function pour(target, options) {
   var G = null, lastW = 0, raf = 0, t0 = 0, playing = false, sim = null, dead = false;
   var fizzRaf = 0, fizzLast = 0, fizzAcc = 0, onScreen = true, ro = null, io = null, waiter = null;
   var saved = null, resolveFinished = null;
-  var reduce = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
-  var ctl = { finished: Promise.resolve(), replay: replay, finish: finish, destroy: destroy };
+  var mqReduce = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)');
+  var mqForced = window.matchMedia && matchMedia('(forced-colors: active)');   // system colors win: no overlay
+  var reduce = !!mqReduce && mqReduce.matches;
+  var started = false, ready = false, want = null;   // want: a replay() or finish() that came before the first draw
+  var ctl = { finished: Promise.resolve(), replay: function () { safe(replay)(); return ctl.finished; },
+              finish: function () { safe(finish)(); return ctl.finished; }, destroy: destroy };
 
   function settle() { if (resolveFinished) { resolveFinished(); resolveFinished = null; } }
   function newPour() { settle(); ctl.finished = new Promise(function (r) { resolveFinished = r; }); }
   newPour();
 
-  var forced = window.matchMedia && matchMedia('(forced-colors: active)').matches;   // system colors win: no overlay
-  if (!target || !document.fonts || !window.requestAnimationFrame || forced) { settle(); return ctl; }
+  if (target && owners.has(target)) owners.get(target).destroy();
+  if (!target || !document.fonts || !window.requestAnimationFrame || (mqForced && mqForced.matches)) { dead = true; settle(); return ctl; }
+  owners.set(target, ctl);
+
+  // Any error from here on gives the plain heading back: overlays, observers and loops go, the text's own
+  // color returns and finished settles. Every way in (frames, observers, timers, public controls) goes through it.
+  function safe(fn) {
+    return function () {
+      if (dead) return;
+      try { return fn.apply(this, arguments); } catch (e) { destroy(); if (window.console) console.error('beer-text:', e); }
+    };
+  }
   var cs = getComputedStyle(target), emptyColor = o.empty || cs.color;   // read before the text goes transparent
 
   function font(size) { return cs.fontStyle + ' ' + cs.fontWeight + ' ' + size + 'px ' + cs.fontFamily; }
@@ -502,14 +517,14 @@ export function pour(target, options) {
   function canFizz() { return !!G && !dead && !reduce && !document.hidden && onScreen; }
   function startFizz() { if (fizzRaf || playing || !canFizz()) return; fizzLast = 0; fizzRaf = requestAnimationFrame(fizzTick); }
   function stopFizz() { cancelAnimationFrame(fizzRaf); fizzRaf = 0; }
-  function fizzTick(now) {
+  var fizzTick = safe(function (now) {
     fizzRaf = 0;
     if (playing || !canFizz()) return;
     var dt = fizzLast ? Math.min(0.1, (now - fizzLast) / 1000) : 0;
     fizzLast = now; fizzAcc += dt;
     if (fizzAcc >= 1 / 30) { fizzStep(G, fizzAcc, 1.4, 0); fizzDraw(G); fizzAcc = 0; }
     fizzRaf = requestAnimationFrame(fizzTick);
-  }
+  });
 
   // What to draw at a moment: the simulation, blended onto the exact still frame as it lands.
   function frameState(g, simState, done) {
@@ -587,7 +602,7 @@ export function pour(target, options) {
     settle();
   }
 
-  function frame(now) {
+  var frame = safe(function (now) {
     if (!playing) return;
     var T = (now - t0 - HOLD) / 1000;                 // the simulation steps on elapsed time, never frame count
     if (T < 0) { raf = requestAnimationFrame(frame); return; }
@@ -607,7 +622,7 @@ export function pour(target, options) {
     fizzStep(G, sim.t - before, 1.4, G.wall0 * WALL_K * (sim.Q / sim.QMAX) * (fall / (1.15 * G.H)));
     fizzDraw(G);
     raf = requestAnimationFrame(frame);
-  }
+  });
 
   function play() {
     if (!G || reduce) { stillFrame(); return; }
@@ -622,10 +637,9 @@ export function pour(target, options) {
 
   function mount(andPlay) {
     var m = measure();
-    if (!m || !(m.capH > 0)) { settle(); return; }   // no usable metrics: never swap the text out for a broken overlay
+    if (!m || !(m.capH > 0)) { want = null; settle(); return; }   // no usable metrics: never swap the text out for a broken overlay
     var next = build(m);
-    requestAnimationFrame(function () {
-      if (dead) return;
+    requestAnimationFrame(safe(function () {
       // Swap rule: the overlay appears and the HTML text goes transparent in the same frame.
       if (G) { G.svg.remove(); G.canvas.remove(); G.clip.remove(); }   // the old clip goes first: the new one reuses its id
       G = next;
@@ -638,19 +652,28 @@ export function pour(target, options) {
       }
       target.appendChild(G.svg);
       target.appendChild(G.canvas);
+      if (want) { andPlay = want === 'play'; want = null; }
       if (andPlay) play(); else stillFrame();
-    });
+    }));
   }
 
   function key() { return 'beer-text:' + target.textContent.trim(); }
   function playedThisSession() { try { return sessionStorage.getItem(key()) === '1'; } catch (e) { return false; } }
   function markPlayed() { try { sessionStorage.setItem(key(), '1'); } catch (e) { /* storage blocked: it may replay, harmless */ } }
 
-  function onVisibility() { if (document.hidden) { if (playing) stillFrame(); stopFizz(); } else startFizz(); }
+  var onVisibility = safe(function () { if (document.hidden) { if (playing) stillFrame(); stopFizz(); } else startFizz(); });
+  var onReduce = safe(function () { reduce = mqReduce.matches; if (reduce) { if (playing) stillFrame(); stopFizz(); } else startFizz(); });
+  var onForced = safe(function () { if (mqForced.matches) destroy(); });
 
   // Public controls.
-  function replay() { if (dead) return ctl.finished; newPour(); if (G) play(); else mount(true); return ctl.finished; }
-  function finish() { if (!dead && G) stillFrame(); return ctl.finished; }
+  // Before the first draw, a replay() or finish() is remembered and honored when the heading is ready.
+  function replay() {
+    newPour(); want = null;
+    if (G) play(); else if (started) mount(true); else { want = 'play'; if (ready) start(true); }
+  }
+  function finish() {
+    if (G) stillFrame(); else { want = 'still'; if (ready && !started) start(false); }
+  }
   function destroy() {
     if (dead) return;
     dead = true; playing = false;
@@ -659,6 +682,8 @@ export function pour(target, options) {
     if (io) io.disconnect();
     if (waiter) waiter.disconnect();
     document.removeEventListener('visibilitychange', onVisibility);
+    listen('removeEventListener');
+    if (owners.get(target) === ctl) owners.delete(target);
     if (G) {
       G.svg.remove(); G.canvas.remove(); G.clip.remove(); G = null;
       var h = document.querySelector('svg[data-beer-text="defs"]');
@@ -671,43 +696,51 @@ export function pour(target, options) {
     settle();
   }
 
+  function listen(how) {
+    if (mqReduce && mqReduce[how]) mqReduce[how]('change', onReduce);
+    if (mqForced && mqForced[how]) mqForced[how]('change', onForced);
+  }
   document.addEventListener('visibilitychange', onVisibility);
+  listen('addEventListener');
   if ('IntersectionObserver' in window) {
-    io = new IntersectionObserver(function (e) {
+    io = new IntersectionObserver(safe(function (e) {
       onScreen = e[0].isIntersecting;
       if (!onScreen) { if (playing) stillFrame(); stopFizz(); } else startFizz();
-    });
+    }));
     io.observe(target);
   }
 
-  fontReady(font(10)).then(function (ok) {
-    if (dead) return;
-    if (!ok) { settle(); return; }      // the font never arrived: the plain heading stays
+  function start(andPlay) {
+    if (waiter) { waiter.disconnect(); waiter = null; }
+    if (started) return;
+    started = true;
+    if (andPlay && o.once === 'session') markPlayed();
+    mount(andPlay);
+    lastW = target.clientWidth;
+    if ('ResizeObserver' in window) {
+      ro = new ResizeObserver(safe(function () {
+        var w = target.clientWidth;
+        if (Math.abs(w - lastW) > 0.5) { lastW = w; mount(false); }   // re-measure and redraw the still frame, never replay
+      }));
+      ro.observe(target);
+    }
+  }
+
+  fontReady(font(10)).then(safe(function (ok) {
+    if (!ok) { destroy(); return; }      // the font never arrived: the plain heading stays
+    ready = true;
+    if (want) { start(want === 'play'); return; }
     var nav = performance.getEntriesByType && performance.getEntriesByType('navigation')[0];
     var reloaded = !!nav && nav.type === 'reload';
     var wantPour = autoplay && !reduce && (o.once !== 'session' || reloaded || !playedThisSession());
-    var start = function (andPlay) {
-      if (andPlay && o.once === 'session') markPlayed();
-      mount(andPlay);
-      lastW = target.clientWidth;
-      if ('ResizeObserver' in window) {
-        ro = new ResizeObserver(function () {
-          var w = target.clientWidth;
-          if (Math.abs(w - lastW) > 0.5) { lastW = w; mount(false); }   // re-measure and redraw the still frame, never replay
-        });
-        ro.observe(target);
-      }
-    };
     // A pour waits until the heading is mostly in view; the plain heading shows until then.
     if (wantPour && 'IntersectionObserver' in window) {
-      waiter = new IntersectionObserver(function (e) {
-        if (e[0].intersectionRatio >= 0.6 || (e[0].isIntersecting && e[0].intersectionRect.height >= 0.6 * innerHeight)) {
-          waiter.disconnect(); waiter = null; start(true);
-        }
-      }, { threshold: [0, 0.6, 1] });
+      waiter = new IntersectionObserver(safe(function (e) {
+        if (e[0].intersectionRatio >= 0.6 || (e[0].isIntersecting && e[0].intersectionRect.height >= 0.6 * innerHeight)) start(true);
+      }), { threshold: [0, 0.6, 1] });
       waiter.observe(target);
     } else start(wantPour);
-  });
+  }));
 
   return ctl;
 }

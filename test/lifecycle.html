@@ -1,0 +1,175 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>beer-text lifecycle tests</title>
+<style>
+  body { margin: 0; padding: 16px; background: #1C4B69; color: #F4F1EA; font: 14px/1.5 ui-monospace, Menlo, monospace; }
+  h2 { font: 700 48px/1 Georgia, serif; margin: 0 0 8px; color: #FFFFFF; }
+  .pass { color: #7FE8A0; } .fail { color: #FF8A8A; }
+</style>
+</head>
+<body>
+<!-- Browser tests for the controller's lifecycle: failure recovery, early controls, one controller per heading,
+     and accessibility settings that change while the page is open. Serve the repo root (python3 -m http.server)
+     and open /test/lifecycle.html; the title ends in ALL PASS or N FAIL. -->
+<div id="stage"></div>
+<pre id="out">running...</pre>
+<script type="module">
+  import { pour } from '../src/beer-text.js';
+
+  var out = document.getElementById('out'), stage = document.getElementById('stage'), results = [], errors = [];
+  addEventListener('error', function (e) { errors.push(e.message); });
+  addEventListener('unhandledrejection', function (e) { errors.push('rejection: ' + (e.reason && e.reason.message || e.reason)); });
+  var sleep = function (ms) { return new Promise(function (r) { setTimeout(r, ms); }); };
+  function within(p, ms) { return Promise.race([p.then(function () { return true; }), sleep(ms).then(function () { return false; })]); }
+  function heading(text) { stage.textContent = ''; var h = document.createElement('h2'); h.textContent = text || 'Lager'; stage.appendChild(h); return h; }
+  function overlays(h) { return h.querySelectorAll('[data-beer-text]').length; }
+  function plain(h) { return h.style.color === '' && h.style.webkitTextFillColor === '' && overlays(h) === 0; }
+
+  // Media queries the tests can flip: matchMedia is swapped for fakes while a test runs.
+  var realMM = window.matchMedia, mqs = {};
+  function fakeMQ(media) {
+    var ls = [];
+    return { media: media, matches: false,
+      addEventListener: function (t, f) { ls.push(f); }, removeEventListener: function (t, f) { ls = ls.filter(function (x) { return x !== f; }); },
+      addListener: function (f) { ls.push(f); }, removeListener: function (f) { ls = ls.filter(function (x) { return x !== f; }); },
+      set: function (v) { this.matches = v; var e = { matches: v, media: media }; ls.slice().forEach(function (f) { f(e); }); },
+      listeners: function () { return ls.length; } };
+  }
+  function fakeMedia() {
+    mqs = {};
+    window.matchMedia = function (q) { if (!mqs[q]) mqs[q] = fakeMQ(q); return mqs[q]; };
+    return { reduce: window.matchMedia('(prefers-reduced-motion: reduce)'), forced: window.matchMedia('(forced-colors: active)') };
+  }
+
+  async function test(name, fn) {
+    var ok = false, note = '';
+    try { var r = await fn(); ok = r === true; if (r !== true && r) note = String(r); } catch (e) { note = 'threw: ' + e.message; }
+    window.matchMedia = realMM;
+    stage.textContent = '';
+    if (errors.length) { note += (note ? '; ' : '') + 'uncaught: ' + errors.join(' | '); errors = []; }
+    results.push((ok ? 'PASS ' : 'FAIL ') + name + (note ? '  (' + note + ')' : ''));
+    out.innerHTML = results.map(function (l) { return '<span class="' + (l[0] === 'P' ? 'pass' : 'fail') + '">' + l.replace(/</g, '&lt;') + '</span>'; }).join('\n');
+  }
+
+  await test('two pours on one heading: one overlay, and the text comes back after both are destroyed', async function () {
+    var h = heading(), a = pour(h, { autoplay: false });
+    await sleep(500);
+    var b = pour(h, { autoplay: false });
+    await sleep(500);
+    var n = overlays(h);
+    a.destroy(); b.destroy();
+    return n === 2 && plain(h) ? true : 'overlay nodes while mounted ' + n + ' (want 2: one svg, one canvas), color after "' + h.style.color + '"';
+  });
+
+  await test('forced colors: replay() does not draw an overlay', async function () {
+    var m = fakeMedia(); m.forced.matches = true;
+    var h = heading(), c = pour(h);
+    c.replay();
+    await sleep(500);
+    var ok = plain(h), why = 'overlay nodes ' + overlays(h) + ', color "' + h.style.color + '"';
+    c.destroy();
+    return ok ? true : why;
+  });
+
+  await test('forced colors switched on later: the plain heading comes back', async function () {
+    var m = fakeMedia(), h = heading(), c = pour(h, { autoplay: false });
+    await sleep(500);
+    if (!overlays(h)) return 'never mounted';
+    m.forced.set(true);
+    await sleep(100);
+    var ok = plain(h), why = 'overlay nodes ' + overlays(h) + ', color "' + h.style.color + '"';
+    c.destroy();
+    return ok ? true : why;
+  });
+
+  await test('reduced motion switched on mid-pour: the pour stops at once', async function () {
+    var m = fakeMedia(), h = heading(), c = pour(h, { autoplay: false });
+    await sleep(500);
+    var p = c.replay();
+    await sleep(400);
+    m.reduce.set(true);
+    var stopped = await within(p, 300);
+    c.destroy();
+    return stopped ? true : 'still pouring 300 ms after reduced motion turned on';
+  });
+
+  await test('destroy() removes the media listeners', async function () {
+    var m = fakeMedia(), h = heading(), c = pour(h, { autoplay: false });
+    await sleep(500);
+    c.destroy();
+    var left = m.reduce.listeners() + m.forced.listeners();
+    return left === 0 ? true : left + ' listeners left';
+  });
+
+  await test('finish() before the first draw shows the full pint without pouring', async function () {
+    var h = heading(), c = pour(h);
+    var p = c.finish();
+    var quick = await within(p, 1200);
+    var n = overlays(h);
+    c.destroy();
+    return quick && n === 2 ? true : 'settled within 1.2 s: ' + quick + ', overlay nodes ' + n;
+  });
+
+  await test('replay() before the font check finishes pours once, uncut', async function () {
+    var h = heading(), c = pour(h, { autoplay: false });
+    var p = c.replay();
+    var cut = await within(p, 1500);
+    var n = overlays(h);
+    c.destroy();
+    return !cut && n === 2 ? true : 'pour ended within 1.5 s: ' + cut + ', overlay nodes ' + n;
+  });
+
+  // Fault injection: drawing throws. The plain heading must come back and finished must settle.
+  function breakDrawing() {
+    var orig = SVGElement.prototype.setAttribute;
+    SVGElement.prototype.setAttribute = function (k, v) { if (k === 'd' && this.closest && this.closest('svg[data-beer-text]')) throw new Error('injected'); return orig.call(this, k, v); };
+    return function () { SVGElement.prototype.setAttribute = orig; };
+  }
+  function quiet() { var e = console.error; console.error = function () {}; return function () { console.error = e; }; }
+
+  await test('drawing fails as the pour starts: plain heading, finished settles', async function () {
+    var h = heading(), c = pour(h, { autoplay: false });
+    await sleep(500);
+    var fix = breakDrawing(), hush = quiet(), p;
+    try { p = c.replay(); } catch (e) { /* the old code threw out of replay() */ }
+    fix();
+    await sleep(100);
+    hush();
+    var settled = p ? await within(p, 300) : false, ok = plain(h);
+    c.destroy();
+    return ok && settled ? true : 'plain ' + ok + ', settled ' + settled;
+  });
+
+  await test('drawing fails mid-pour (in an animation frame): plain heading, finished settles', async function () {
+    var h = heading(), c = pour(h, { autoplay: false });
+    await sleep(500);
+    var p = c.replay();
+    await sleep(600);
+    var fix = breakDrawing(), hush = quiet();
+    await sleep(200);
+    fix(); hush();
+    var settled = await within(p, 300), ok = plain(h);
+    c.destroy();
+    return ok && settled ? true : 'plain ' + ok + ', settled ' + settled;
+  });
+
+  await test('destroy() leaves nothing behind', async function () {
+    var h = heading(), c = pour(h, { autoplay: false });
+    await sleep(500);
+    c.destroy();
+    return plain(h) && !document.querySelector('svg[data-beer-text="defs"]') ? true : 'leftovers';
+  });
+
+  var fails = results.filter(function (l) { return l[0] === 'F'; }).length;
+  document.title = 'beer-text lifecycle: ' + (fails ? fails + ' FAIL' : 'ALL PASS');
+  results.push('\n' + (fails ? fails + ' FAIL' : 'ALL PASS'));
+  out.innerHTML += '\n\n' + (fails ? fails + ' FAIL' : 'ALL PASS');
+  // With ?report, the results also go to the server as a request it logs (the page must be in a foreground
+  // window: background tabs pause animation frames and these tests time real pours).
+  if (/report/.test(location.search)) fetch('/__report?' + encodeURIComponent(navigator.userAgent + '\n' + results.join('\n'))).catch(function () {});
+</script>
+</body>
+</html>
