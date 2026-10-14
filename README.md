@@ -2,7 +2,7 @@
 
 Fill your headings like a pint of beer. The stream lands, the surface sloshes, a head builds and settles, and carbonation rises through the letters. It is a small physics simulation, not a looping wave, in plain JS and SVG with no dependencies.
 
-The heading stays real text: screen readers, copy and paste, find-in-page and search engines see the same heading as before.
+The heading stays real text: its own text is unchanged, so screen readers, copy and paste, and scripts that read the heading get the same heading as before.
 
 ## Use
 
@@ -48,7 +48,7 @@ title.addEventListener('click', () => pint.replay());
 - Put real spaces between words. Gaps made only with CSS margins or padding between inline elements are not reproduced in the beer.
 - One font per heading. The heading's own font is used, so any web font or system font works.
 - Animation runs only while the heading is on screen and the tab is visible.
-- The letter shapes are cut with a hidden copy of the heading's text, kept outside the heading, so the heading reads once to search engines, link previews and scripts. Find-in-page may count the heading twice.
+- The letter shapes are cut with a hidden copy of the heading's text (hidden from screen readers too), kept at the end of the page rather than inside the heading, so the heading's own text is unchanged. Find-in-page may count the heading twice, and anything that reads the whole page's text may see the copy as well; how search engines treat it has not been tested.
 - The physics module is exported on its own (`beer-text/physics`) and runs in Node. Its time is compressed: a real head settles over minutes, this one in about a second, with the same shape of decay.
 
 ## Develop
