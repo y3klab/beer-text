@@ -64,6 +64,14 @@
     return got.every(function (g) { return g === 'Beer/Text'; }) ? true : 'letter shapes read ' + JSON.stringify(got) + ' (want "Beer/Text" twice)';
   });
 
+  await test('capitalize at a mid-word wrap: the continuation stays lowercase (Bre/wing)', async function () {
+    var h = heading('brewing', 'text-transform:capitalize;overflow-wrap:anywhere;width:2.2em'), c = pour(h, { autoplay: false });
+    await sleep(500);
+    var got = Array.from(document.querySelectorAll('svg[data-beer-text="defs"] clipPath text')).map(function (t) { return t.textContent; });
+    c.destroy();
+    return got.length > 1 && /^[A-Z]/.test(got[0]) && got.slice(1).every(function (l) { return /^[a-z]/.test(l); }) ? true : 'letter shapes read ' + JSON.stringify(got) + ' (want 2+ lines, only the first capitalized)';
+  });
+
   await test('a smaller font at the same width rebuilds the letter shapes at the new size', async function () {
     var h = heading('Lager', 'width:400px'), c = pour(h, { autoplay: false });
     await sleep(500);

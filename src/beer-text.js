@@ -159,10 +159,12 @@ export function pour(target, options) {
       while (ch.length && ch[0].c === ' ') ch.shift();
       while (ch.length && ch[ch.length - 1].c === ' ') ch.pop();
       if (!ch.length) return null;
-      // The whole line is transformed at once where it can be, so letters whose case depends on their neighbors
-      // (a Greek final sigma) come out right; capitalize comes from the words as read above.
-      var raw = ch.map(function (c) { return cs.textTransform === 'capitalize' ? c.t : c.c; }).join('').replace(/ +/g, ' ');
-      return { text: transform(raw, cs.textTransform), x: ch[0].l - ox, w: ch[ch.length - 1].r - ch[0].l, top: ln.top,
+      // Upper and lowercase transform the whole line at once, so letters whose case depends on their neighbors
+      // (a Greek final sigma) come out right; capitalize comes from the words as read above, so a word broken
+      // across lines is capitalized once.
+      var cap = cs.textTransform === 'capitalize';
+      var raw = ch.map(function (c) { return cap ? c.t : c.c; }).join('').replace(/ +/g, ' ');
+      return { text: cap ? raw : transform(raw, cs.textTransform), x: ch[0].l - ox, w: ch[ch.length - 1].r - ch[0].l, top: ln.top,
                chars: ch.map(function (c) { return { c: c.c, t: c.t, x: c.l - ox }; }) };
     }).filter(Boolean);
     if (!lines.length) return null;
@@ -753,7 +755,8 @@ export function pour(target, options) {
   }
 
   var txt = target.textContent;
-  fontReady(font(10), transform(txt, cs.textTransform)).then(safe(function (ok) {
+  // Capitalize's capitals can follow a <br> that textContent doesn't show, so it asks for both cases.
+  fontReady(font(10), cs.textTransform === 'capitalize' ? txt + txt.toUpperCase() : transform(txt, cs.textTransform)).then(safe(function (ok) {
     if (!ok) { destroy(); return; }      // the font never arrived: the plain heading stays
     ready = true;
     if (want) { start(want === 'play'); return; }
