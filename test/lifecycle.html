@@ -49,7 +49,7 @@
     try { var r = await fn(); ok = r === true; if (r !== true && r) note = String(r); } catch (e) { note = 'threw: ' + e.message; }
     window.matchMedia = realMM;
     stage.textContent = '';
-    if (errors.length) { note += (note ? '; ' : '') + 'uncaught: ' + errors.join(' | '); errors = []; }
+    if (errors.length) { ok = false; note += (note ? '; ' : '') + 'uncaught: ' + errors.join(' | '); errors = []; }
     results.push((ok ? 'PASS ' : 'FAIL ') + name + (note ? '  (' + note + ')' : ''));
     out.innerHTML = results.map(function (l) { return '<span class="' + (l[0] === 'P' ? 'pass' : 'fail') + '">' + l.replace(/</g, '&lt;') + '</span>'; }).join('\n');
   }
@@ -99,9 +99,10 @@
   await test('destroy() removes the media listeners', async function () {
     var m = fakeMedia(), h = heading(), c = pour(h, { autoplay: false });
     await sleep(500);
+    var added = m.reduce.listeners() + m.forced.listeners();
     c.destroy();
     var left = m.reduce.listeners() + m.forced.listeners();
-    return left === 0 ? true : left + ' listeners left';
+    return added === 2 && left === 0 ? true : added + ' listeners added (want 2), ' + left + ' left';
   });
 
   await test('finish() before the first draw shows the full pint without pouring', async function () {
@@ -116,16 +117,16 @@
   await test('replay() before the font check finishes pours once, uncut', async function () {
     var h = heading(), c = pour(h, { autoplay: false });
     var p = c.replay();
-    var cut = await within(p, 1500);
-    var n = overlays(h);
+    var cut = await within(p, 1500), n = overlays(h), done = await within(p, 8000);
     c.destroy();
-    return !cut && n === 2 ? true : 'pour ended within 1.5 s: ' + cut + ', overlay nodes ' + n;
+    return !cut && done && n === 2 ? true : 'ended within 1.5 s: ' + cut + ', ended within 9.5 s: ' + done + ', overlay nodes ' + n;
   });
 
   // Fault injection: drawing throws. The plain heading must come back and finished must settle.
+  var injected = 0;
   function breakDrawing() {
     var orig = SVGElement.prototype.setAttribute;
-    SVGElement.prototype.setAttribute = function (k, v) { if (k === 'd' && this.closest && this.closest('svg[data-beer-text]')) throw new Error('injected'); return orig.call(this, k, v); };
+    SVGElement.prototype.setAttribute = function (k, v) { if (k === 'd' && this.closest && this.closest('svg[data-beer-text]')) { injected++; throw new Error('injected'); } return orig.call(this, k, v); };
     return function () { SVGElement.prototype.setAttribute = orig; };
   }
   function quiet() { var e = console.error; console.error = function () {}; return function () { console.error = e; }; }
@@ -138,9 +139,9 @@
     fix();
     await sleep(100);
     hush();
-    var settled = p ? await within(p, 300) : false, ok = plain(h);
+    var settled = p ? await within(p, 300) : false, ok = plain(h), fired = injected; injected = 0;
     c.destroy();
-    return ok && settled ? true : 'plain ' + ok + ', settled ' + settled;
+    return ok && settled && fired ? true : 'plain ' + ok + ', settled ' + settled + ', error injected ' + fired + ' times';
   });
 
   await test('drawing fails mid-pour (in an animation frame): plain heading, finished settles', async function () {
@@ -151,9 +152,65 @@
     var fix = breakDrawing(), hush = quiet();
     await sleep(200);
     fix(); hush();
-    var settled = await within(p, 300), ok = plain(h);
+    var settled = await within(p, 300), ok = plain(h), fired = injected; injected = 0;
     c.destroy();
-    return ok && settled ? true : 'plain ' + ok + ', settled ' + settled;
+    return ok && settled && fired ? true : 'plain ' + ok + ', settled ' + settled + ', error injected ' + fired + ' times';
+  });
+
+  // A resize queues a redraw for the next frame; a control called in between must win over it.
+  function frames(n) { return new Promise(function (r) { (function f(k) { if (!k) return r(); requestAnimationFrame(function () { f(k - 1); }); })(n); }); }
+  async function queuedRedraw(h) { h.style.width = '300px'; await frames(2); }   // the redraw is queued, not yet drawn
+
+  await test('replay() while a resize redraw is queued pours uncut', async function () {
+    var h = heading(); h.style.width = '400px';
+    var c = pour(h, { autoplay: false });
+    await sleep(500);
+    await queuedRedraw(h);
+    var p = c.replay();
+    var cut = await within(p, 1500), done = await within(p, 8000);
+    c.destroy();
+    return !cut && done ? true : 'ended within 1.5 s: ' + cut + ', ended within 9.5 s: ' + done;
+  });
+
+  await test('guard: replay() then finish() while a redraw is queued settles on the full pint', async function () {
+    var h = heading(); h.style.width = '400px';
+    var c = pour(h, { autoplay: false });
+    await sleep(500);
+    await queuedRedraw(h);
+    c.replay(); var p = c.finish();
+    var quick = await within(p, 500);
+    await sleep(1500);
+    var later = c.finished === p, n = overlays(h);
+    c.destroy();
+    return quick && later && n === 2 ? true : 'settled within 0.5 s: ' + quick + ', no new pour started after: ' + later + ', overlay nodes ' + n;
+  });
+
+  await test('reduced motion switched on while waiting to scroll into view: the full pint shows', async function () {
+    var m = fakeMedia(), h = heading(); h.style.marginTop = '300vh';
+    var c = pour(h);
+    await sleep(500);
+    m.reduce.set(true);
+    var shown = await within(c.finished, 1000), n = overlays(h);
+    c.destroy();
+    return shown && n === 2 ? true : 'settled within 1 s: ' + shown + ', overlay nodes ' + n;
+  });
+
+  await test('the font loader throws: plain heading, finished settles, no uncaught error', async function () {
+    var real = document.fonts.load;
+    document.fonts.load = function () { throw new Error('font check broken'); };
+    var h = heading(), c, settled, ok;
+    try { c = pour(h); settled = await within(c.finished, 1000); ok = plain(h); } finally { document.fonts.load = real; }
+    c.destroy();
+    return settled && ok ? true : 'settled ' + settled + ', plain ' + ok;
+  });
+
+  await test('the font never finishes loading: plain heading, finished settles', async function () {
+    var real = document.fonts.load;
+    document.fonts.load = function () { return new Promise(function () {}); };
+    var h = heading(), c, settled, ok;
+    try { c = pour(h); settled = await within(c.finished, 4000); ok = plain(h); } finally { document.fonts.load = real; }
+    c.destroy();
+    return settled && ok ? true : 'settled within 4 s: ' + settled + ', plain ' + ok;
   });
 
   await test('destroy() leaves nothing behind', async function () {

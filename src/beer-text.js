@@ -59,16 +59,18 @@ function transform(text, tt) {
 }
 
 // Wait for the heading's own font. fonts.ready can resolve before a display=swap face is even requested,
-// so ask for the face and poll check(); a system font passes check() at once.
+// so ask for the face and poll check(); a system font passes check() at once. Gives up after 2.5 s even if
+// a load never settles, and a font API that throws counts as no font.
 function fontReady(spec) {
-  var start = performance.now();
   return new Promise(function (done) {
+    var ended = false, poll = 0, deadline = setTimeout(function () { end(false); }, 2500);
+    function end(ok) { if (ended) return; ended = true; clearTimeout(deadline); clearTimeout(poll); done(ok); }
     (function attempt() {
-      document.fonts.load(spec).then(function () {
-        if (document.fonts.check(spec)) return done(true);
-        if (performance.now() - start > 2500) return done(false);
-        setTimeout(attempt, 100);
-      }, function () { done(false); });
+      Promise.resolve().then(function () { return document.fonts.load(spec); }).then(function () {
+        if (ended) return;
+        if (document.fonts.check(spec)) return end(true);
+        poll = setTimeout(attempt, 100);
+      }).catch(function () { end(false); });
     })();
   });
 }
@@ -94,7 +96,7 @@ export function pour(target, options) {
   var id = 'beer-text-' + (++count) + '-';
   var G = null, lastW = 0, raf = 0, t0 = 0, playing = false, sim = null, dead = false;
   var fizzRaf = 0, fizzLast = 0, fizzAcc = 0, onScreen = true, ro = null, io = null, waiter = null;
-  var saved = null, resolveFinished = null;
+  var saved = null, resolveFinished = null, mountRaf = 0, mountPlay = false;
   var mqReduce = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)');
   var mqForced = window.matchMedia && matchMedia('(forced-colors: active)');   // system colors win: no overlay
   var reduce = !!mqReduce && mqReduce.matches;
@@ -110,8 +112,9 @@ export function pour(target, options) {
   if (!target || !document.fonts || !window.requestAnimationFrame || (mqForced && mqForced.matches)) { dead = true; settle(); return ctl; }
   owners.set(target, ctl);
 
-  // Any error from here on gives the plain heading back: overlays, observers and loops go, the text's own
-  // color returns and finished settles. Every way in (frames, observers, timers, public controls) goes through it.
+  // An error in any later callback gives the plain heading back: overlays, observers and loops go, the text's
+  // own color returns and finished settles. Frames, observers, media and visibility listeners, the font check's
+  // result and the public controls all go through it.
   function safe(fn) {
     return function () {
       if (dead) return;
@@ -631,15 +634,20 @@ export function pour(target, options) {
     sim = createPourSim(G.geo, G.tune);
     stopFizz(); fizzReset(G);
     draw(G, frameState(G, sim, false));                 // the empty glass
+    if (o.once === 'session') markPlayed();             // only once a pour has really begun
     playing = true; t0 = performance.now();
     raf = requestAnimationFrame(frame);
   }
 
+  // One queued draw at a time: a newer one replaces it, keeping a queued pour.
   function mount(andPlay) {
+    if (mountRaf) { cancelAnimationFrame(mountRaf); mountRaf = 0; andPlay = andPlay || mountPlay; }
     var m = measure();
     if (!m || !(m.capH > 0)) { want = null; settle(); return; }   // no usable metrics: never swap the text out for a broken overlay
     var next = build(m);
-    requestAnimationFrame(safe(function () {
+    mountPlay = andPlay;
+    mountRaf = requestAnimationFrame(safe(function () {
+      mountRaf = 0;
       // Swap rule: the overlay appears and the HTML text goes transparent in the same frame.
       if (G) { G.svg.remove(); G.canvas.remove(); G.clip.remove(); }   // the old clip goes first: the new one reuses its id
       G = next;
@@ -662,38 +670,42 @@ export function pour(target, options) {
   function markPlayed() { try { sessionStorage.setItem(key(), '1'); } catch (e) { /* storage blocked: it may replay, harmless */ } }
 
   var onVisibility = safe(function () { if (document.hidden) { if (playing) stillFrame(); stopFizz(); } else startFizz(); });
-  var onReduce = safe(function () { reduce = mqReduce.matches; if (reduce) { if (playing) stillFrame(); stopFizz(); } else startFizz(); });
+  var onReduce = safe(function () { reduce = mqReduce.matches; if (reduce) { finish(); stopFizz(); } else startFizz(); });
   var onForced = safe(function () { if (mqForced.matches) destroy(); });
 
   // Public controls.
-  // Before the first draw, a replay() or finish() is remembered and honored when the heading is ready.
+  // Before the first draw, or while a draw is queued, a replay() or finish() is remembered and honored then.
   function replay() {
     newPour(); want = null;
-    if (G) play(); else if (started) mount(true); else { want = 'play'; if (ready) start(true); }
+    if (mountRaf) want = 'play';
+    else if (G) play(); else if (started) mount(true); else { want = 'play'; if (ready) start(true); }
   }
   function finish() {
-    if (G) stillFrame(); else { want = 'still'; if (ready && !started) start(false); }
+    if (mountRaf || !G) { want = 'still'; if (G) stillFrame(); if (ready && !started) start(false); } else stillFrame();
   }
   function destroy() {
     if (dead) return;
     dead = true; playing = false;
-    cancelAnimationFrame(raf); stopFizz();
-    if (ro) ro.disconnect();
-    if (io) io.disconnect();
-    if (waiter) waiter.disconnect();
-    document.removeEventListener('visibilitychange', onVisibility);
-    listen('removeEventListener');
-    if (owners.get(target) === ctl) owners.delete(target);
-    if (G) {
-      G.svg.remove(); G.canvas.remove(); G.clip.remove(); G = null;
-      var h = document.querySelector('svg[data-beer-text="defs"]');
-      if (h && !h.firstChild) h.remove();
+    try {
+      cancelAnimationFrame(raf); cancelAnimationFrame(mountRaf); stopFizz();
+      if (ro) ro.disconnect();
+      if (io) io.disconnect();
+      if (waiter) waiter.disconnect();
+      document.removeEventListener('visibilitychange', onVisibility);
+      listen('removeEventListener');
+      if (owners.get(target) === ctl) owners.delete(target);
+      if (G) {
+        G.svg.remove(); G.canvas.remove(); G.clip.remove(); G = null;
+        var h = document.querySelector('svg[data-beer-text="defs"]');
+        if (h && !h.firstChild) h.remove();
+      }
+    } finally {   // whatever else fails, the text comes back and finished settles
+      if (saved) {
+        target.style.position = saved.position; target.style.color = saved.color; target.style.webkitTextFillColor = saved.fill;
+        saved = null;
+      }
+      settle();
     }
-    if (saved) {
-      target.style.position = saved.position; target.style.color = saved.color; target.style.webkitTextFillColor = saved.fill;
-      saved = null;
-    }
-    settle();
   }
 
   function listen(how) {
@@ -714,7 +726,6 @@ export function pour(target, options) {
     if (waiter) { waiter.disconnect(); waiter = null; }
     if (started) return;
     started = true;
-    if (andPlay && o.once === 'session') markPlayed();
     mount(andPlay);
     lastW = target.clientWidth;
     if ('ResizeObserver' in window) {
