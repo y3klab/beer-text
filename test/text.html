@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>beer-text text tests</title>
+<style>
+  body { margin: 0; padding: 16px; background: #1C4B69; color: #F4F1EA; font: 14px/1.5 ui-monospace, Menlo, monospace; }
+  h2 { font: 700 48px/1 Georgia, serif; margin: 0 0 8px; color: #FFFFFF; }
+  .pass { color: #7FE8A0; } .fail { color: #FF8A8A; }
+</style>
+</head>
+<body>
+<!-- Browser tests for how the overlay reads the heading's text: text-transform with letter-spacing, rebuilding
+     when the typography changes, the font check, bubble streams on repeated letters, and two copies of the
+     library on one page. Serve the repo root and open /test/text.html in a foreground window (background tabs
+     pause animation frames); the title ends in ALL PASS or N FAIL. -->
+<div id="stage"></div>
+<pre id="out">running...</pre>
+<script type="module">
+  import { pour } from '../src/beer-text.js';
+
+  var out = document.getElementById('out'), stage = document.getElementById('stage'), results = [], errors = [];
+  addEventListener('error', function (e) { errors.push(e.message); });
+  addEventListener('unhandledrejection', function (e) { errors.push('rejection: ' + (e.reason && e.reason.message || e.reason)); });
+  var sleep = function (ms) { return new Promise(function (r) { setTimeout(r, ms); }); };
+  function heading(text, css) { var h = document.createElement('h2'); h.textContent = text; if (css) h.style.cssText = css; stage.appendChild(h); return h; }
+  function clipText() { return document.querySelector('svg[data-beer-text="defs"] clipPath text'); }
+
+  async function test(name, fn) {
+    var ok = false, note = '';
+    try { var r = await fn(); ok = r === true; if (r !== true && r) note = String(r); } catch (e) { note = 'threw: ' + e.message; }
+    stage.textContent = '';
+    if (errors.length) { ok = false; note += (note ? '; ' : '') + 'uncaught: ' + errors.join(' | '); errors = []; }
+    results.push((ok ? 'PASS ' : 'FAIL ') + name + (note ? '  (' + note + ')' : ''));
+    out.innerHTML = results.map(function (l) { return '<span class="' + (l[0] === 'P' ? 'pass' : 'fail') + '">' + l.replace(/</g, '&lt;') + '</span>'; }).join('\n');
+  }
+
+  await test('letter-spaced capitalize: the letter shapes capitalize each word, not every letter', async function () {
+    var h = heading('beer text', 'letter-spacing:0.1em;text-transform:capitalize'), c = pour(h, { autoplay: false });
+    await sleep(500);
+    var t = clipText(), got = t ? t.textContent : 'no clip';
+    c.destroy();
+    return got === 'BeerText' ? true : 'letter shapes read "' + got + '" (want "BeerText")';
+  });
+
+  await test('a smaller font at the same width rebuilds the letter shapes at the new size', async function () {
+    var h = heading('Lager', 'width:400px'), c = pour(h, { autoplay: false });
+    await sleep(500);
+    h.style.fontSize = '24px';
+    await sleep(400);
+    var t = clipText(), got = t ? t.getAttribute('font-size') : 'no clip';
+    c.destroy();
+    return got === '24' ? true : 'letter shapes at font-size ' + got + ' (want 24)';
+  });
+
+  await test('the font check asks about the heading\'s own characters', async function () {
+    var asked = [], realLoad = document.fonts.load, realCheck = document.fonts.check;
+    document.fonts.load = function (f, t) { asked.push(t || ''); return realLoad.apply(this, arguments); };
+    document.fonts.check = function (f, t) { asked.push(t || ''); return realCheck.apply(this, arguments); };
+    var h = heading('Système', 'text-transform:uppercase'), c;
+    try { c = pour(h, { autoplay: false }); await sleep(500); } finally { document.fonts.load = realLoad; document.fonts.check = realCheck; }
+    c.destroy();
+    var all = asked.length && asked.every(function (t) { return t.indexOf('Système') >= 0 && t.indexOf('SYSTÈME') >= 0; });
+    return all ? true : 'text passed to the font API: ' + JSON.stringify(asked);
+  });
+
+  // Where bubbles appear on the fizz canvas over a few seconds, as separate clusters of columns.
+  async function streamPlaces(h, ms) {
+    var cv = h.querySelector('canvas[data-beer-text]'), cx = cv.getContext('2d'), hit = new Uint8Array(cv.width), end = performance.now() + ms;
+    while (performance.now() < end) {
+      var d = cx.getImageData(0, 0, cv.width, cv.height).data;
+      for (var i = 3; i < d.length; i += 4) if (d[i] > 0) hit[((i - 3) / 4) % cv.width] = 1;
+      await sleep(100);
+    }
+    var places = 0, gapRun = Infinity, minGap = cv.width / 12;
+    for (var x = 0; x < hit.length; x++) { if (hit[x]) { if (gapRun > minGap) places++; gapRun = 0; } else gapRun++; }
+    return places;
+  }
+
+  await test('a word of one repeated letter still gets several bubble streams (WWW)', async function () {
+    var h = heading('WWW', 'font-size:120px;display:inline-block'), c = pour(h, { autoplay: false });
+    await sleep(500);
+    var n = await streamPlaces(h, 4000);
+    c.destroy();
+    return n >= 2 ? true : 'bubbles rose in ' + n + ' place(s) (want at least 2)';
+  });
+
+  await test('a control word of different letters gets several bubble streams (Wake)', async function () {
+    var h = heading('Wake', 'font-size:120px;display:inline-block'), c = pour(h, { autoplay: false });
+    await sleep(500);
+    var n = await streamPlaces(h, 4000);
+    c.destroy();
+    return n >= 2 ? true : 'bubbles rose in ' + n + ' place(s) (want at least 2)';
+  });
+
+  await test('two copies of the library on one page never reuse an SVG id', async function () {
+    var b = await import('../src/beer-text.js?copy=b'), cc = await import('../src/beer-text.js?copy=c');
+    var h1 = heading('Lager'), h2 = heading('Stout'), c1 = b.pour(h1, { autoplay: false }), c2 = cc.pour(h2, { autoplay: false });
+    await sleep(500);
+    var ids = Array.from(document.querySelectorAll('[id^="beer-text-"]')).map(function (e) { return e.id; });
+    var dup = ids.filter(function (x, i) { return ids.indexOf(x) !== i; });
+    var mounted = h1.querySelector('svg[data-beer-text]') && h2.querySelector('svg[data-beer-text]');
+    c1.destroy(); c2.destroy();
+    return mounted && ids.length && !dup.length ? true : 'mounted ' + !!mounted + ', ' + ids.length + ' ids, duplicates: ' + (dup.join(', ') || 'none');
+  });
+
+  var fails = results.filter(function (l) { return l[0] === 'F'; }).length;
+  document.title = 'beer-text text: ' + (fails ? fails + ' FAIL' : 'ALL PASS');
+  results.push('\n' + (fails ? fails + ' FAIL' : 'ALL PASS'));
+  out.innerHTML += '\n\n' + (fails ? fails + ' FAIL' : 'ALL PASS');
+  if (/report/.test(location.search)) fetch('/__report?' + encodeURIComponent(navigator.userAgent + '\n' + results.join('\n'))).catch(function () {});
+</script>
+</body>
+</html>

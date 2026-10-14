@@ -16,7 +16,7 @@ export var presets = {
 
 var NS = 'http://www.w3.org/2000/svg';
 var HOLD = 350, LAND_START = 1.9, LAND_END = 2.5;   // ms before the pour starts; landing, in s after it stops
-var count = 0;
+var COUNT = typeof Symbol === 'function' ? Symbol.for('beer-text.count') : '__beerTextCount';   // shared by every copy of the library on the page, so SVG ids never repeat
 var owners = new WeakMap();   // heading -> its controller: a second pour() on a heading replaces the first
 
 // The letter shapes are a clipPath of <text>, which reads as text to anything that reads the heading
@@ -49,7 +49,7 @@ function rev(a) { return a.slice().reverse(); }
 // it out: canvas letterSpacing is missing in some browsers, and without it the shapes bunch up.
 function fillLine(cx, l, m, dy) {
   if (!m.ls) { cx.fillText(l.text, l.x, l.base - dy); return; }
-  l.chars.forEach(function (c) { if (c.c !== ' ') cx.fillText(transform(c.c, m.tt), c.x, l.base - dy); });
+  l.chars.forEach(function (c) { if (c.c !== ' ') cx.fillText(c.t, c.x, l.base - dy); });
 }
 function transform(text, tt) {
   if (tt === 'uppercase') return text.toUpperCase();
@@ -59,16 +59,17 @@ function transform(text, tt) {
 }
 
 // Wait for the heading's own font. fonts.ready can resolve before a display=swap face is even requested,
-// so ask for the face and poll check(); a system font passes check() at once. Gives up after 2.5 s even if
+// so ask for the face and poll check(); a system font passes check() at once. Both get the heading's own
+// characters, so a font split into character subsets loads the subsets the heading uses. Gives up after 2.5 s even if
 // a load never settles, and a font API that throws counts as no font.
-function fontReady(spec) {
+function fontReady(spec, text) {
   return new Promise(function (done) {
     var ended = false, poll = 0, deadline = setTimeout(function () { end(false); }, 2500);
     function end(ok) { if (ended) return; ended = true; clearTimeout(deadline); clearTimeout(poll); done(ok); }
     (function attempt() {
-      Promise.resolve().then(function () { return document.fonts.load(spec); }).then(function () {
+      Promise.resolve().then(function () { return document.fonts.load(spec, text); }).then(function () {
         if (ended) return;
-        if (document.fonts.check(spec)) return end(true);
+        if (document.fonts.check(spec, text)) return end(true);
         poll = setTimeout(attempt, 100);
       }).catch(function () { end(false); });
     })();
@@ -93,8 +94,8 @@ export function pour(target, options) {
   var colors = Object.assign({}, presets[o.preset] || presets.lager, o.colors || {});
   var head = o.head == null ? null : clamp(+o.head, 0.05, 0.6);
   var autoplay = o.autoplay !== false;
-  var id = 'beer-text-' + (++count) + '-';
-  var G = null, lastW = 0, raf = 0, t0 = 0, playing = false, sim = null, dead = false;
+  var id = 'beer-text-' + (window[COUNT] = (window[COUNT] || 0) + 1) + '-';
+  var G = null, lastW = 0, lastH = 0, raf = 0, t0 = 0, playing = false, sim = null, dead = false;
   var fizzRaf = 0, fizzLast = 0, fizzAcc = 0, onScreen = true, ro = null, io = null, waiter = null;
   var saved = null, resolveFinished = null, mountRaf = 0, mountPlay = false;
   var mqReduce = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)');
@@ -133,16 +134,21 @@ export function pour(target, options) {
     var walker = document.createTreeWalker(target, NodeFilter.SHOW_TEXT, {
       acceptNode: function (n) { return n.parentNode.closest('[data-beer-text]') ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT; }
     });
-    var range = document.createRange(), lines = [], cur = null, n;
+    // t: the character as shown. Capitalize depends on the character before it, so it is decided here, in reading
+    // order, rather than one character at a time (which would uppercase every letter).
+    var range = document.createRange(), lines = [], cur = null, n, prevSpace = true;
     while ((n = walker.nextNode())) {
       var s = n.nodeValue;
       for (var i = 0; i < s.length; i++) {
         var len = s.codePointAt(i) > 0xFFFF ? 2 : 1;
         range.setStart(n, i); range.setEnd(n, i + len);
         var r = range.getClientRects()[0];
+        var ch0 = /\s/.test(s[i]) ? ' ' : s.substr(i, len);
+        var t = cs.textTransform === 'capitalize' ? (prevSpace ? ch0.toUpperCase() : ch0) : transform(ch0, cs.textTransform);
+        prevSpace = ch0 === ' ';
         if (r && r.width > 0 && r.height > 0) {
           if (!cur || r.top > cur.top + 0.5 * r.height) lines.push(cur = { top: r.top, chars: [] });
-          cur.chars.push({ c: /\s/.test(s[i]) ? ' ' : s.substr(i, len), l: r.left, r: r.right });
+          cur.chars.push({ c: ch0, t: t, l: r.left, r: r.right });
         }
         i += len - 1;
       }
@@ -152,8 +158,8 @@ export function pour(target, options) {
       while (ch.length && ch[0].c === ' ') ch.shift();
       while (ch.length && ch[ch.length - 1].c === ' ') ch.pop();
       if (!ch.length) return null;
-      return { text: transform(ch.map(function (c) { return c.c; }).join('').replace(/ +/g, ' '), cs.textTransform), x: ch[0].l - ox, w: ch[ch.length - 1].r - ch[0].l, top: ln.top,
-               chars: ch.map(function (c) { return { c: c.c, x: c.l - ox }; }) };
+      return { text: ch.map(function (c) { return c.t; }).join('').replace(/ +/g, ' '), x: ch[0].l - ox, w: ch[ch.length - 1].r - ch[0].l, top: ln.top,
+               chars: ch.map(function (c) { return { c: c.c, t: c.t, x: c.l - ox }; }) };
     }).filter(Boolean);
     if (!lines.length) return null;
     var probe = document.createElement('span');
@@ -174,7 +180,7 @@ export function pour(target, options) {
     var capH = asc(lines[0].text), hH = asc('H'), xH = asc('x');
     var letters = lines[0].text.replace(/[^\p{L}]/gu, ''), lower = letters.replace(/[^\p{Ll}]/gu, '').length;
     var bodyH = Math.min(capH, lower > letters.length / 2 && xH < 0.8 * hH ? xH : hH) || capH;
-    return { W: W, H: H, fs: fs, ls: ls, tt: cs.textTransform, lines: lines, capH: capH, bodyH: bodyH };
+    return { W: W, H: H, fs: fs, ls: ls, lines: lines, capH: capH, bodyH: bodyH };
   }
 
   function build(m) {
@@ -209,7 +215,7 @@ export function pour(target, options) {
     L.forEach(function (l) {
       var t = el('text', { x: l.x, y: l.base, 'font-family': cs.fontFamily, 'font-size': m.fs, 'font-weight': cs.fontWeight, 'font-style': cs.fontStyle }, clip);
       if (!m.ls) { t.textContent = l.text; return; }
-      l.chars.forEach(function (c) { if (c.c !== ' ') el('tspan', { x: c.x }, t).textContent = transform(c.c, m.tt); });
+      l.chars.forEach(function (c) { if (c.c !== ' ') el('tspan', { x: c.x }, t).textContent = c.t; });
     });
     var beer = el('linearGradient', { id: id + 'beer', gradientUnits: 'userSpaceOnUse', x1: 0, y1: g.surf, x2: 0, y2: g.bottom }, defs);
     ['0', '0.30', '0.65', '1'].forEach(function (off, i) { el('stop', { offset: off, 'stop-color': colors.beer[i] }, beer); });
@@ -374,18 +380,22 @@ export function pour(target, options) {
     });
     // Feet spaced evenly along the line, as the original picks them. A foot that is still mostly hidden, sits
     // too close to a stream, or is in a letter that already has one (a repeated letter repeats its pattern)
-    // gives way to its nearest neighbor.
-    var gap = g.Wg / (2 * n);
-    for (var si = 0; si < n; si++) {
+    // gives way to its nearest neighbor. A slot left empty that way tries again allowing a repeated letter,
+    // so a word like WWW still gets its streams.
+    var gap = g.Wg / (2 * n), empty = [];
+    function pick(si, distinct) {
       var at = n > 1 ? Math.round(si * (cands.length - 1) / (n - 1)) : Math.floor(cands.length / 2);
       for (var off = 0; off < cands.length; off++) {
         var c0 = cands[at + (off % 2 ? (off + 1) / 2 : -off / 2)];
-        if (!c0 || c0.s < 0.45 || sites.some(function (s0) { return Math.abs(s0.x - c0.x) < gap || (c0.ch && s0.ch === c0.ch); })) continue;
+        if (!c0 || c0.s < 0.45 || sites.some(function (s0) { return Math.abs(s0.x - c0.x) < gap || (distinct && c0.ch && s0.ch === c0.ch); })) continue;
         var by0 = g.inkBottom[Math.round(c0.x)];
         sites.push({ x: c0.x, w: c0.w, y: by0 === by0 ? by0 : y, next: Math.random() * 0.4, k: 1, s: c0.s, ch: c0.ch });
-        break;
+        return true;
       }
+      return false;
     }
+    for (var si = 0; si < n; si++) if (!pick(si, true)) empty.push(si);
+    empty.forEach(function (si) { pick(si, false); });
     if (!sites.length && runs.length) sites.push({ x: runs[0].x, w: runs[0].w, y: y, next: 0, k: 1, s: 0 });
     sites.sort(function (p, q) { return p.x - q.x; });
     // The middle streams run calmer than the outer ones.
@@ -727,17 +737,19 @@ export function pour(target, options) {
     if (started) return;
     started = true;
     mount(andPlay);
-    lastW = target.clientWidth;
+    lastW = target.clientWidth; lastH = target.clientHeight;
     if ('ResizeObserver' in window) {
       ro = new ResizeObserver(safe(function () {
-        var w = target.clientWidth;
-        if (Math.abs(w - lastW) > 0.5) { lastW = w; mount(false); }   // re-measure and redraw the still frame, never replay
+        // A new width rewraps the lines; a new height means the font size or line height changed.
+        var w = target.clientWidth, hh = target.clientHeight;
+        if (Math.abs(w - lastW) > 0.5 || Math.abs(hh - lastH) > 0.5) { lastW = w; lastH = hh; mount(false); }   // re-measure and redraw the still frame, never replay
       }));
       ro.observe(target);
     }
   }
 
-  fontReady(font(10)).then(safe(function (ok) {
+  var txt = target.textContent;
+  fontReady(font(10), txt + transform(txt, cs.textTransform)).then(safe(function (ok) {
     if (!ok) { destroy(); return; }      // the font never arrived: the plain heading stays
     ready = true;
     if (want) { start(want === 'play'); return; }

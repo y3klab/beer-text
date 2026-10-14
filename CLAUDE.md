@@ -8,6 +8,7 @@ Open-source JS library that fills a heading's letters like a pint of beer - simu
 - `src/beer-text.js` - `pour(el, options)`, presets, the SVG overlay and the carbonation canvas.
 - `demo/index.html` - the demo page (word: Beer Text) (`index.html` because GitHub Pages serves it).
 - `test/lifecycle.html` - browser tests for the controller: failure recovery, early `replay()`/`finish()`, one controller per heading, accessibility settings changing live. Run it in a foreground window (background tabs pause animation frames); `?report` sends the results to the server log.
+- `test/text.html` - browser tests for reading the heading: text-transform with letter-spacing, rebuilding on a font-size change, the font check's characters, bubble streams on repeated letters (WWW), two copies of the library on one page. Same foreground and `?report` rules.
 - `test/physics.test.js` - stability and landing tests across glass shapes. `BEER_TEXT_SIM=<path>` points the suite at another copy of the sim (used to prove the stability case fails on the original).
 
 ## Commands

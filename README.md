@@ -54,7 +54,7 @@ title.addEventListener('click', () => pint.replay());
 ## Develop
 
 - Demo: serve the repo root (`python3 -m http.server`) and open `/demo/`.
-- Tests: `npm test` (physics, in Node), and `test/lifecycle.html` in a foreground browser window (serve the repo root, open `/test/lifecycle.html`; the title reads ALL PASS or N FAIL).
+- Tests: `npm test` (physics, in Node), and `test/lifecycle.html` and `test/text.html` in a foreground browser window (serve the repo root and open each page; the title reads ALL PASS or N FAIL).
 
 ## License
 
