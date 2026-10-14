@@ -408,7 +408,8 @@ export function pour(target, options) {
   // constant three minutes), and it never goes fully flat, so a page left open stays alive but calmer.
   var FLAT_TAU = 180, FLAT_FLOOR = 0.35;
   // A stream comes from a microscopic speck in the glass; now and then a speck stalls for a few seconds
-  // and restarts (on average once every 40 s, for 2-8 s, and never two streams at once).
+  // and restarts (on average once every 40 s, for 2-8 s, and never two streams at once). A stream alone on
+  // its half of the heading never stalls, so neither side goes bare.
   var STALL_EVERY = 40;
   // Drawn larger than modeled: at true proportions a newborn bubble is under a pixel and all but vanishes.
   // Only the picture is scaled; speed and growth still come from the modeled size.
@@ -433,7 +434,8 @@ export function pour(target, options) {
       var st = g.sites[i];
       if (surfaceAt(g, st.x) > st.y - 2) continue;            // no beer above this point yet
       if (st.off > 0) { st.off -= dt; continue; }
-      if (Math.random() < dt / STALL_EVERY && !g.sites.some(function (s0) { return s0.off > 0; })) { st.off = 2 + 6 * Math.random(); continue; }
+      if (Math.random() < dt / STALL_EVERY && !g.sites.some(function (s0) { return s0.off > 0; }) &&
+          g.sites.some(function (s0) { return s0 !== st && (s0.x < g.minX + g.Wg / 2) === (st.x < g.minX + g.Wg / 2); })) { st.off = 2 + 6 * Math.random(); continue; }
       st.next -= dt * rate * st.k * co2;
       // Each stream comes from one speck in the glass with a beat of its own, steady but not exact,
       // and now and then it stutters.
