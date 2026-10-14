@@ -235,7 +235,8 @@ export function pour(target, options) {
     // stream starts inside solid beer. Pooled circles; bubbles vanish between lines (the glyph clip)
     // and reappear in the next, and pop into the head at the surface.
     g.fs = m.fs;
-    g.sites = findSites(m, last, Math.round(clamp(g.Wg / 75, 2, 4)), g);
+    // Streams: one per 75px of glass, at least 3 so a short word never goes bare on one side while a stream pauses.
+    g.sites = findSites(m, last, Math.round(clamp(g.Wg / 75, 3, 4)), g);
     // Bubbles per second in the opening wall, scaled to the glass width.
     g.wall0 = 150 * Math.min(1, Math.sqrt(g.Wg / 1108));
     // Bubbles are drawn on one canvas over the heading (hundreds of SVG circles cost too much to repaint
@@ -333,9 +334,10 @@ export function pour(target, options) {
       return t / n0;
     }
     // One candidate per letter foot.
-    function letterAt(x) {                         // which letter of the line a foot belongs to
-      for (var li = 0; li < line.text.length; li++) if (x < line.x + ctx.measureText(line.text.slice(0, li + 1)).width) return line.text[li].toLowerCase();
-      return '';
+    function letterAt(x) {                         // which letter of the line a foot belongs to, from where each was laid out
+      var r = '';
+      line.chars.forEach(function (c) { if (c.c !== ' ' && x >= c.x) r = c.c.toLowerCase(); });
+      return r;
     }
     var cands = runs.map(function (r0) {
       var xa = Math.ceil(r0.x - r0.w / 2), xb = Math.floor(r0.x + r0.w / 2), bs = -1, x1, sc = [];
