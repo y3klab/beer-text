@@ -265,6 +265,26 @@
     return Math.abs(ys[0] - ys[1]) < 0.5 ? true : 'baseline at ' + ys[1] + ' with the block, ' + ys[0] + ' without';
   });
 
+  function emptyFill(h) { var r = h.querySelector('svg[data-beer-text] rect'); return r && r.getAttribute('fill'); }
+  await test('a stylesheet that arrives after pour() still sets the empty letters\' color', async function () {
+    var h = heading('Lager'); h.id = 'late-h';
+    var c = pour(h, { autoplay: false });
+    var s = document.createElement('style'); s.textContent = '#late-h { color: rgb(255, 0, 0); }'; document.head.appendChild(s);
+    await sleep(500);
+    var f = emptyFill(h); c.destroy(); s.remove();
+    return f === 'rgb(255, 0, 0)' ? true : 'empty letters drawn ' + f;
+  });
+
+  await test('a color change that comes with a resize is picked up on the rebuild', async function () {
+    var h = heading('Lager'); h.id = 'late-h';
+    var c = pour(h, { autoplay: false });
+    await sleep(500);
+    var s = document.createElement('style'); s.textContent = '#late-h { color: rgb(0, 128, 0); font-size: 36px; }'; document.head.appendChild(s);
+    await sleep(500);
+    var f = emptyFill(h), real = getComputedStyle(h).color; c.destroy(); s.remove();
+    return f === 'rgb(0, 128, 0)' && real === 'rgba(0, 0, 0, 0)' ? true : 'empty letters drawn ' + f + ', heading text color ' + real;
+  });
+
   var fails = results.filter(function (l) { return l[0] === 'F'; }).length;
   document.title = 'beer-text text: ' + (fails ? fails + ' FAIL' : 'ALL PASS');
   results.push('\n' + (fails ? fails + ' FAIL' : 'ALL PASS'));

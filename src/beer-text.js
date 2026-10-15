@@ -152,7 +152,7 @@ export function pour(target, options) {
       try { return fn.apply(this, arguments); } catch (e) { destroy(); if (window.console) console.error('beer-text:', e); }
     };
   }
-  var cs = getComputedStyle(target), emptyColor = o.empty || cs.color;   // read before the text goes transparent
+  var cs = getComputedStyle(target), emptyColor = o.empty;
 
   function font(size) { return cs.fontStyle + ' ' + cs.fontWeight + ' ' + size + 'px ' + cs.fontFamily; }
 
@@ -160,6 +160,14 @@ export function pour(target, options) {
   // Positions come back in the heading's own CSS pixels: a scaled heading or ancestor is divided back out.
   function measure() {
     cs = getComputedStyle(target);
+    // The empty letters take the text color as styled now, not when pour() ran: a page's stylesheet can
+    // arrive after its scripts (Safari, uncached). Once the text is transparent, the author's inline color
+    // goes back for the read, in the same task, so nothing paints in between.
+    if (!o.empty) {
+      if (saved) { target.style.color = saved.color; target.style.webkitTextFillColor = saved.fill; }
+      emptyColor = cs.color;
+      if (saved) { target.style.color = 'transparent'; target.style.webkitTextFillColor = 'transparent'; }
+    }
     if (unsupported(target, cs)) return null;
     var hr = target.getBoundingClientRect();
     var sx = target.offsetWidth && Math.abs(hr.width - target.offsetWidth) > 1 ? hr.width / target.offsetWidth : 1;
