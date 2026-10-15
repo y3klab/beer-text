@@ -79,7 +79,7 @@ function unsupported(target, cs) {
   if (cs.fontVariantCaps && cs.fontVariantCaps !== 'normal') return true;
   for (var e = target; e && e.nodeType === 1; e = e.parentElement) {
     var st = getComputedStyle(e), tf = st.transform;
-    if (st.rotate && st.rotate !== 'none' && parseFloat(st.rotate) || st.scale && /-/.test(st.scale)) return true;
+    if (st.rotate && st.rotate !== 'none' && parseFloat(st.rotate.split(' ').pop()) !== 0 || st.scale && /-/.test(st.scale)) return true;   // the angle is the last part (x 30deg, 0 1 0 30deg)
     if (!tf || tf === 'none') continue;
     var mx = /^matrix(3d)?\((.*)\)$/.exec(tf), v = mx && mx[2].split(',').map(parseFloat);
     if (v && mx[1]) v = v[2] || v[3] || v[6] || v[7] || v[8] || v[9] || v[10] !== 1 || v[11] || v[15] !== 1 ? null : [v[0], v[1], v[4], v[5]];   // 3D: translation only

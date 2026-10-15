@@ -21,9 +21,17 @@
 
   var out = document.getElementById('out'), stage = document.getElementById('stage'), results = [], errors = [];
   // Errors from browser extensions (a password manager's script on the page) aren't the library's; anything else fails the case.
-  // Judged by where the error was raised: the error's file, or the first frame of a rejection's stack that names a URL.
+  // Judged by where the error was raised: the error's file, or the URL of a rejection's first stack frame (a frame
+  // line is "name@url" in Firefox and Safari, "    at ... url" in Chrome; a message header never counts).
   var foreign = function (src) { return /^(safari-web-extension|moz-extension|chrome-extension|webkit-masked-url):\/\//.test(src || ''); };
-  var origin = function (stack) { var f = /(?:@|at |\()((?:[a-z-]+):\/\/[^\s)]+)/.exec(String(stack || '')); return f ? f[1] : ''; };
+  var origin = function (stack) {
+    var lines = String(stack || '').split('\n');
+    for (var i = 0; i < lines.length; i++) {
+      var f = /^[^\s@]*@([a-z-]+:\/\/\S+)/.exec(lines[i]) || /^\s+at (?:.*\()?([a-z-]+:\/\/[^\s)]+)/.exec(lines[i]);
+      if (f) return f[1];
+    }
+    return '';
+  };
   // "Script error." with no file is the muted form of an error from a script on another origin; this page's own
   // module is same-origin, so its errors always carry their file.
   addEventListener('error', function (e) { if (!foreign(e.filename) && !(!e.filename && e.message === 'Script error.')) errors.push(e.message); });
