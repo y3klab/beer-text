@@ -45,10 +45,11 @@ function smooth(pts, lead) {   // Catmull-Rom through the samples, as cubic Bezi
   return d;
 }
 function rev(a) { return a.slice().reverse(); }
-// Draw one measured line on a canvas. With letter-spacing, each character goes where the browser laid
-// it out: canvas letterSpacing is missing in some browsers, and without it the shapes bunch up.
+// Draw one measured line on a canvas. Where the line's spacing isn't the font's own (letter-spacing, word-spacing,
+// preserved or justified spaces), each character goes where the browser laid it out: canvas letterSpacing is
+// missing in some browsers, and drawn whole the shapes would bunch up.
 function fillLine(cx, l, m, dy) {
-  if (!m.ls) { cx.fillText(l.text, l.x, l.base - dy); return; }
+  if (!m.each) { cx.fillText(l.text, l.x, l.base - dy); return; }
   l.chars.forEach(function (c) { if (c.c !== ' ') cx.fillText(c.t, c.x, l.base - dy); });
 }
 function transform(text, tt) {
@@ -56,6 +57,33 @@ function transform(text, tt) {
   if (tt === 'lowercase') return text.toLowerCase();
   if (tt === 'capitalize') return text.replace(/(^|\s)(\S)/g, function (m, s, c) { return s + c.toUpperCase(); });
   return text;
+}
+
+// The text in user-perceived characters, so an accent typed as its own code point stays on its letter.
+var segmenter;
+function clusters(s) {
+  if (segmenter === undefined) segmenter = window.Intl && Intl.Segmenter ? new Intl.Segmenter() : null;
+  if (segmenter) return Array.from(segmenter.segment(s), function (x) { return [x.index, x.segment.length]; });
+  var out = [], re = /\P{M}\p{M}*|\p{M}+/gu, mm;
+  while ((mm = re.exec(s))) out.push([mm.index, mm[0].length]);
+  return out;
+}
+
+// Typography the overlay can't reproduce, where the plain heading is kept instead: right-to-left text (lines are
+// read left to right), small caps (canvas and SVG text can't be relied on to draw them), and a rotated, skewed or
+// mirrored heading or ancestor. Scale is fine: measure() corrects for it.
+var RTL = /[\u0590-\u08FF\uFB1D-\uFDFF\uFE70-\uFEFC\u{10800}-\u{10FFF}\u{1E800}-\u{1EFFF}]/u;
+function unsupported(target, cs) {
+  if (cs.direction === 'rtl' || RTL.test(target.textContent)) return true;
+  if (cs.fontVariantCaps && cs.fontVariantCaps !== 'normal') return true;
+  for (var e = target; e && e.nodeType === 1; e = e.parentElement) {
+    var st = getComputedStyle(e), tf = st.transform;
+    if (st.rotate && st.rotate !== 'none' || st.scale && /-/.test(st.scale)) return true;
+    if (!tf || tf === 'none') continue;
+    var mx = /^matrix\((.*)\)$/.exec(tf), v = mx && mx[1].split(',').map(parseFloat);
+    if (!v || v[1] || v[2] || !(v[0] > 0) || !(v[3] > 0)) return true;   // matrix3d, rotation, skew or a flip
+  }
+  return false;
 }
 
 // Wait for the heading's own font. fonts.ready can resolve before a display=swap face is even requested,
@@ -127,32 +155,38 @@ export function pour(target, options) {
   function font(size) { return cs.fontStyle + ' ' + cs.fontWeight + ' ' + size + 'px ' + cs.fontFamily; }
 
   // Lines as laid out: one Range per character, grouped where the top jumps; the baseline from one probe.
+  // Positions come back in the heading's own CSS pixels: a scaled heading or ancestor is divided back out.
   function measure() {
     cs = getComputedStyle(target);
-    var hr = target.getBoundingClientRect(), ox = hr.left + target.clientLeft, oy = hr.top + target.clientTop;
-    var fs = parseFloat(cs.fontSize), ls = parseFloat(cs.letterSpacing) || 0;
+    if (unsupported(target, cs)) return null;
+    var hr = target.getBoundingClientRect();
+    var sx = target.offsetWidth && Math.abs(hr.width - target.offsetWidth) > 1 ? hr.width / target.offsetWidth : 1;
+    var sy = target.offsetHeight && Math.abs(hr.height - target.offsetHeight) > 1 ? hr.height / target.offsetHeight : 1;
+    var ox = hr.left + target.clientLeft * sx, oy = hr.top + target.clientTop * sy;
+    var fs = parseFloat(cs.fontSize), ws = cs.whiteSpaceCollapse || cs.whiteSpace;
+    var each = !!(parseFloat(cs.letterSpacing) || parseFloat(cs.wordSpacing) || /^(pre|pre-wrap|break-spaces|preserve|preserve-spaces)$/.test(ws) ||
+                  cs.textAlign === 'justify' || cs.textAlignLast === 'justify');
     var walker = document.createTreeWalker(target, NodeFilter.SHOW_TEXT | NodeFilter.SHOW_ELEMENT, {
       acceptNode: function (n) { return (n.nodeType === 1 ? n : n.parentNode).closest('[data-beer-text]') ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT; }
     });
     // t: the character as shown, for the letter-spaced path, which draws one character at a time. Capitalize
     // depends on the character before it (a space or a <br> starts a word), so it is decided here in reading order.
-    var range = document.createRange(), lines = [], cur = null, n, prevSpace = true;
+    var range = document.createRange(), lines = [], cur = null, n, prevSpace = true, lastText = null;
     while ((n = walker.nextNode())) {
       if (n.nodeType === 1) { if (n.tagName === 'BR') prevSpace = true; continue; }
       var s = n.nodeValue;
-      for (var i = 0; i < s.length; i++) {
-        var len = s.codePointAt(i) > 0xFFFF ? 2 : 1;
-        range.setStart(n, i); range.setEnd(n, i + len);
+      clusters(s).forEach(function (k) {
+        range.setStart(n, k[0]); range.setEnd(n, k[0] + k[1]);
         var r = range.getClientRects()[0];
-        var ch0 = /\s/.test(s[i]) ? ' ' : s.substr(i, len);
+        var ch0 = /\s/.test(s[k[0]]) ? ' ' : s.substr(k[0], k[1]);
         var t = cs.textTransform === 'capitalize' ? (prevSpace ? ch0.toUpperCase() : ch0) : transform(ch0, cs.textTransform);
         prevSpace = ch0 === ' ';
         if (r && r.width > 0 && r.height > 0) {
           if (!cur || r.top > cur.top + 0.5 * r.height) lines.push(cur = { top: r.top, chars: [] });
           cur.chars.push({ c: ch0, t: t, l: r.left, r: r.right });
+          lastText = n;
         }
-        i += len - 1;
-      }
+      });
     }
     lines = lines.map(function (ln) {
       var ch = ln.chars;
@@ -163,19 +197,24 @@ export function pour(target, options) {
       // (a Greek final sigma) come out right; capitalize comes from the words as read above, so a word broken
       // across lines is capitalized once.
       var cap = cs.textTransform === 'capitalize';
+      if (!cap) {   // the per-character path takes its letters from the whole line too, when the lengths line up
+        var whole = transform(ch.map(function (c) { return c.c; }).join(''), cs.textTransform), at = 0;
+        if (whole.length === ch.reduce(function (a, c) { return a + c.t.length; }, 0)) ch.forEach(function (c) { c.t = whole.substr(at, c.t.length); at += c.t.length; });
+      }
       var raw = ch.map(function (c) { return cap ? c.t : c.c; }).join('').replace(/ +/g, ' ');
-      return { text: cap ? raw : transform(raw, cs.textTransform), x: ch[0].l - ox, w: ch[ch.length - 1].r - ch[0].l, top: ln.top,
-               chars: ch.map(function (c) { return { c: c.c, t: c.t, x: c.l - ox }; }) };
+      return { text: cap ? raw : transform(raw, cs.textTransform), x: (ch[0].l - ox) / sx, w: (ch[ch.length - 1].r - ch[0].l) / sx, top: ln.top,
+               chars: ch.map(function (c) { return { c: c.c, t: c.t, x: (c.l - ox) / sx }; }) };
     }).filter(Boolean);
     if (!lines.length) return null;
+    // The probe goes right after the last text, on its line: appended to the heading, it would land below a block child.
     var probe = document.createElement('span');
     probe.style.cssText = 'display:inline-block;width:0;height:0;vertical-align:baseline';
-    target.appendChild(probe);
+    lastText.parentNode.insertBefore(probe, lastText.nextSibling);
     var pr = probe.getBoundingClientRect(), near = lines[lines.length - 1];
     lines.forEach(function (ln) { if (Math.abs(ln.top - pr.top) < Math.abs(near.top - pr.top)) near = ln; });
     var off = pr.bottom - near.top;
     probe.remove();
-    lines.forEach(function (ln) { ln.base = ln.top + off - oy; });
+    lines.forEach(function (ln) { ln.base = (ln.top + off - oy) / sy; });
     var ctx = document.createElement('canvas').getContext('2d');
     ctx.font = font(fs);
     var W = target.clientWidth, H = target.clientHeight;
@@ -186,7 +225,7 @@ export function pour(target, options) {
     var capH = asc(lines[0].text), hH = asc('H'), xH = asc('x');
     var letters = lines[0].text.replace(/[^\p{L}]/gu, ''), lower = letters.replace(/[^\p{Ll}]/gu, '').length;
     var bodyH = Math.min(capH, lower > letters.length / 2 && xH < 0.8 * hH ? xH : hH) || capH;
-    return { W: W, H: H, fs: fs, ls: ls, lines: lines, capH: capH, bodyH: bodyH };
+    return { W: W, H: H, fs: fs, each: each, lines: lines, capH: capH, bodyH: bodyH };
   }
 
   function build(m) {
@@ -220,7 +259,7 @@ export function pour(target, options) {
     // pulled the beer letters off the real ones. With letter-spacing, each character at its measured left.
     L.forEach(function (l) {
       var t = el('text', { x: l.x, y: l.base, 'font-family': cs.fontFamily, 'font-size': m.fs, 'font-weight': cs.fontWeight, 'font-style': cs.fontStyle }, clip);
-      if (!m.ls) { t.textContent = l.text; return; }
+      if (!m.each) { t.textContent = l.text; return; }
       l.chars.forEach(function (c) { if (c.c !== ' ') el('tspan', { x: c.x }, t).textContent = c.t; });
     });
     var beer = el('linearGradient', { id: id + 'beer', gradientUnits: 'userSpaceOnUse', x1: 0, y1: g.surf, x2: 0, y2: g.bottom }, defs);
@@ -659,7 +698,7 @@ export function pour(target, options) {
   function mount(andPlay) {
     if (mountRaf) { cancelAnimationFrame(mountRaf); mountRaf = 0; andPlay = andPlay || mountPlay; }
     var m = measure();
-    if (!m || !(m.capH > 0)) { want = null; settle(); return; }   // no usable metrics: never swap the text out for a broken overlay
+    if (!m || !(m.capH > 0)) { if (G) destroy(); else { want = null; settle(); } return; }   // no usable metrics or unsupported typography: the plain heading, never a broken overlay
     var next = build(m);
     mountPlay = andPlay;
     mountRaf = requestAnimationFrame(safe(function () {

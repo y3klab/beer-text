@@ -21,8 +21,10 @@
   import { pour } from '../src/beer-text.js';
 
   var out = document.getElementById('out'), stage = document.getElementById('stage'), results = [], errors = [];
-  addEventListener('error', function (e) { errors.push(e.message); });
-  addEventListener('unhandledrejection', function (e) { errors.push('rejection: ' + (e.reason && e.reason.message || e.reason)); });
+  // Errors from browser extensions (a password manager's script on the page) aren't the library's; anything else fails the case.
+  var foreign = function (src) { return /(safari-web-extension|moz-extension|chrome-extension|webkit-masked-url):\/\//.test(src || ''); };
+  addEventListener('error', function (e) { if (!foreign(e.filename) && !foreign(e.error && e.error.stack)) errors.push(e.message); });
+  addEventListener('unhandledrejection', function (e) { if (!foreign(e.reason && e.reason.stack)) errors.push('rejection: ' + (e.reason && e.reason.message || e.reason) + (e.reason && e.reason.stack ? ' @ ' + String(e.reason.stack).split('\n')[0] : '')); });
   var sleep = function (ms) { return new Promise(function (r) { setTimeout(r, ms); }); };
   function heading(text, css) { var h = document.createElement('h2'); h.textContent = text; if (css) h.style.cssText = css; stage.appendChild(h); return h; }
   function clipText() { return document.querySelector('svg[data-beer-text="defs"] clipPath text'); }
@@ -131,6 +133,88 @@
     var mounted = h1.querySelector('svg[data-beer-text]') && h2.querySelector('svg[data-beer-text]');
     c1.destroy(); c2.destroy();
     return mounted && ids.length && !dup.length ? true : 'mounted ' + !!mounted + ', ' + ids.length + ' ids, duplicates: ' + (dup.join(', ') || 'none');
+  });
+
+  // Typography the overlay either reproduces exactly or declines, leaving the plain heading (review group C).
+  function shapes() { return Array.from(document.querySelectorAll('svg[data-beer-text="defs"] clipPath text')); }
+  async function mounted(text, css, html) {
+    var h = heading(text, css); if (html) h.innerHTML = html;
+    var c = pour(h, { autoplay: false });
+    await sleep(500);
+    return { h: h, c: c, overlay: !!h.querySelector('svg[data-beer-text]') };
+  }
+  // Where the real text put a character, relative to the heading's padding box, for the k-th character of a string.
+  function realLeft(h, node, k) { var r = document.createRange(); r.setStart(node, k); r.setEnd(node, k + 1); var hr = h.getBoundingClientRect(); return r.getClientRects()[0].left - hr.left - h.clientLeft; }
+
+  await test('decomposed accent (e + combining grave) stays on its letter, with and without letter-spacing', async function () {
+    var got = [];
+    for (var css of ['', 'letter-spacing:0.1em']) {
+      var m = await mounted('Système', css);
+      got.push(shapes().map(function (t) { return t.textContent.normalize('NFC'); }).join('/'));
+      m.c.destroy(); stage.textContent = '';
+    }
+    return got.every(function (g) { return g === 'Système'; }) ? true : 'letter shapes read ' + JSON.stringify(got) + ' (want "Système" twice)';
+  });
+
+  await test('letter-spaced lowercase keeps the final sigma (ΟΣ becomes ος)', async function () {
+    var m = await mounted('ΟΣ', 'text-transform:lowercase;letter-spacing:0.1em'), got = shapes().map(function (t) { return t.textContent; }).join('/');
+    m.c.destroy();
+    return got === 'ος' ? true : 'letter shapes read "' + got + '"';
+  });
+
+  await test('right-to-left text keeps the plain heading', async function () {
+    var a = await mounted('שלום בירה', 'direction:rtl'), oa = a.overlay, ca = plainText(a.h); a.c.destroy(); stage.textContent = '';
+    var b = await mounted('Beer שלום', ''), ob = b.overlay, cb = plainText(b.h); b.c.destroy();
+    return !oa && !ob && ca && cb ? true : 'overlay on rtl heading ' + oa + ', on mixed heading ' + ob + ', text visible ' + ca + '/' + cb;
+  });
+  function plainText(h) { return h.style.color === '' && h.style.webkitTextFillColor === ''; }
+
+  await test('a scaled ancestor: the letter shapes match an unscaled copy', async function () {
+    var css = 'letter-spacing:0.1em;width:400px', xs = [];
+    for (var wrap of ['', 'transform:scale(0.5)']) {
+      stage.style.cssText = wrap; stage.style.transformOrigin = '0 0';
+      var m = await mounted('Lager', css), ts = shapes()[0].querySelectorAll('tspan');
+      xs.push(+ts[ts.length - 1].getAttribute('x'));
+      m.c.destroy(); stage.textContent = ''; stage.style.cssText = '';
+    }
+    return Math.abs(xs[0] - xs[1]) < 1 ? true : 'last letter at x ' + xs[1] + ' scaled vs ' + xs[0] + ' unscaled';
+  });
+
+  await test('a rotated or mirrored ancestor keeps the plain heading', async function () {
+    var got = [];
+    for (var wrap of ['transform:rotate(10deg)', 'transform:scaleX(-1)']) {
+      stage.style.cssText = wrap;
+      var m = await mounted('Lager', '');
+      got.push(m.overlay && wrap); m.c.destroy(); stage.textContent = ''; stage.style.cssText = '';
+    }
+    got = got.filter(Boolean);
+    return !got.length ? true : 'overlay drawn under ' + got.join(', ');
+  });
+
+  await test('preserved spaces, word-spacing and justified lines: each letter where the real one is', async function () {
+    var bad = [];
+    for (var cfg of [['Big   Beer', 'white-space:pre', 6], ['Big Beer', 'word-spacing:0.6em', 4], ['Big Beer Hall Stout', 'text-align:justify;width:6.5em', 4]]) {
+      var m = await mounted(cfg[0], cfg[1]), real = realLeft(m.h, m.h.firstChild, cfg[2]);
+      var ts = Array.from(document.querySelectorAll('svg[data-beer-text="defs"] clipPath tspan')).filter(function (t) { return t.textContent === 'B'; });
+      var x = ts.length > 1 ? +ts[1].getAttribute('x') : NaN;
+      if (!(Math.abs(x - real) < 1)) bad.push(cfg[1] + ': second B at ' + x + ', real ' + real.toFixed(1));
+      m.c.destroy(); stage.textContent = '';
+    }
+    return !bad.length ? true : bad.join('; ');
+  });
+
+  await test('small caps keep the plain heading', async function () {
+    var m = await mounted('Lager', 'font-variant:small-caps'), o = m.overlay; m.c.destroy();
+    return !o ? true : 'overlay drawn over small caps';
+  });
+
+  await test('a block element at the end of the heading does not move the baseline', async function () {
+    var ys = [];
+    for (var html of ['Lager', 'Lager<span style="display:block;height:0"></span>']) {
+      var m = await mounted('', '', html);
+      ys.push(+shapes()[0].getAttribute('y')); m.c.destroy(); stage.textContent = '';
+    }
+    return Math.abs(ys[0] - ys[1]) < 0.5 ? true : 'baseline at ' + ys[1] + ' with the block, ' + ys[0] + ' without';
   });
 
   var fails = results.filter(function (l) { return l[0] === 'F'; }).length;

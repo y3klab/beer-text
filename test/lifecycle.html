@@ -20,8 +20,10 @@
   import { pour } from '../src/beer-text.js';
 
   var out = document.getElementById('out'), stage = document.getElementById('stage'), results = [], errors = [];
-  addEventListener('error', function (e) { errors.push(e.message); });
-  addEventListener('unhandledrejection', function (e) { errors.push('rejection: ' + (e.reason && e.reason.message || e.reason)); });
+  // Errors from browser extensions (a password manager's script on the page) aren't the library's; anything else fails the case.
+  var foreign = function (src) { return /(safari-web-extension|moz-extension|chrome-extension|webkit-masked-url):\/\//.test(src || ''); };
+  addEventListener('error', function (e) { if (!foreign(e.filename) && !foreign(e.error && e.error.stack)) errors.push(e.message); });
+  addEventListener('unhandledrejection', function (e) { if (!foreign(e.reason && e.reason.stack)) errors.push('rejection: ' + (e.reason && e.reason.message || e.reason) + (e.reason && e.reason.stack ? ' @ ' + String(e.reason.stack).split('\n')[0] : '')); });
   var sleep = function (ms) { return new Promise(function (r) { setTimeout(r, ms); }); };
   function within(p, ms) { return Promise.race([p.then(function () { return true; }), sleep(ms).then(function () { return false; })]); }
   function heading(text) { stage.textContent = ''; var h = document.createElement('h2'); h.textContent = text || 'Lager'; stage.appendChild(h); return h; }
