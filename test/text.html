@@ -22,9 +22,13 @@
 
   var out = document.getElementById('out'), stage = document.getElementById('stage'), results = [], errors = [];
   // Errors from browser extensions (a password manager's script on the page) aren't the library's; anything else fails the case.
-  var foreign = function (src) { return /(safari-web-extension|moz-extension|chrome-extension|webkit-masked-url):\/\//.test(src || ''); };
-  addEventListener('error', function (e) { if (!foreign(e.filename) && !foreign(e.error && e.error.stack)) errors.push(e.message); });
-  addEventListener('unhandledrejection', function (e) { if (!foreign(e.reason && e.reason.stack)) errors.push('rejection: ' + (e.reason && e.reason.message || e.reason) + (e.reason && e.reason.stack ? ' @ ' + String(e.reason.stack).split('\n')[0] : '')); });
+  // Judged by where the error was raised: the error's file, or the first frame of a rejection's stack that names a URL.
+  var foreign = function (src) { return /^(safari-web-extension|moz-extension|chrome-extension|webkit-masked-url):\/\//.test(src || ''); };
+  var origin = function (stack) { var f = /(?:@|at |\()((?:[a-z-]+):\/\/[^\s)]+)/.exec(String(stack || '')); return f ? f[1] : ''; };
+  // "Script error." with no file is the muted form of an error from a script on another origin; this page's own
+  // module is same-origin, so its errors always carry their file.
+  addEventListener('error', function (e) { if (!foreign(e.filename) && !(!e.filename && e.message === 'Script error.')) errors.push(e.message); });
+  addEventListener('unhandledrejection', function (e) { if (!foreign(origin(e.reason && e.reason.stack))) errors.push('rejection: ' + (e.reason && e.reason.message || e.reason) + (e.reason && e.reason.stack ? ' @ ' + String(e.reason.stack).split('\n')[0] : '')); });
   var sleep = function (ms) { return new Promise(function (r) { setTimeout(r, ms); }); };
   function heading(text, css) { var h = document.createElement('h2'); h.textContent = text; if (css) h.style.cssText = css; stage.appendChild(h); return h; }
   function clipText() { return document.querySelector('svg[data-beer-text="defs"] clipPath text'); }
@@ -37,6 +41,14 @@
     results.push((ok ? 'PASS ' : 'FAIL ') + name + (note ? '  (' + note + ')' : ''));
     out.innerHTML = results.map(function (l) { return '<span class="' + (l[0] === 'P' ? 'pass' : 'fail') + '">' + l.replace(/</g, '&lt;') + '</span>'; }).join('\n');
   }
+
+  await test('guard: the error filter still catches this page\'s own uncaught errors', async function () {
+    setTimeout(function () { throw new Error('control'); });
+    Promise.reject(new Error('control rejection'));
+    await sleep(100);
+    var got = errors.slice(); errors = [];
+    return got.length === 2 ? true : 'caught ' + JSON.stringify(got) + ' (want the error and the rejection)';
+  });
 
   await test('letter-spaced capitalize: the letter shapes capitalize each word, not every letter', async function () {
     var h = heading('beer text', 'letter-spacing:0.1em;text-transform:capitalize'), c = pour(h, { autoplay: false });
@@ -191,16 +203,42 @@
     return !got.length ? true : 'overlay drawn under ' + got.join(', ');
   });
 
-  await test('preserved spaces, word-spacing and justified lines: each letter where the real one is', async function () {
+  await test('preserved spaces, word-spacing and justified lines: each word where the real one is', async function () {
     var bad = [];
     for (var cfg of [['Big   Beer', 'white-space:pre', 6], ['Big Beer', 'word-spacing:0.6em', 4], ['Big Beer Hall Stout', 'text-align:justify;width:6.5em', 4]]) {
       var m = await mounted(cfg[0], cfg[1]), real = realLeft(m.h, m.h.firstChild, cfg[2]);
-      var ts = Array.from(document.querySelectorAll('svg[data-beer-text="defs"] clipPath tspan')).filter(function (t) { return t.textContent === 'B'; });
+      var ts = Array.from(document.querySelectorAll('svg[data-beer-text="defs"] clipPath tspan')).filter(function (t) { return t.textContent[0] === 'B'; });
       var x = ts.length > 1 ? +ts[1].getAttribute('x') : NaN;
       if (!(Math.abs(x - real) < 1)) bad.push(cfg[1] + ': second B at ' + x + ', real ' + real.toFixed(1));
       m.c.destroy(); stage.textContent = '';
     }
     return !bad.length ? true : bad.join('; ');
+  });
+
+  await test('preserved spaces and word-spacing draw whole words, keeping ligatures (office)', async function () {
+    var bad = [];
+    for (var css of ['white-space:pre', 'word-spacing:0.6em']) {
+      var m = await mounted('Big  office', css), real = realLeft(m.h, m.h.firstChild, 5);
+      var w = Array.from(document.querySelectorAll('svg[data-beer-text="defs"] clipPath tspan')).filter(function (t) { return t.textContent === 'office'; })[0];
+      if (!w || !(Math.abs(+w.getAttribute('x') - real) < 1)) bad.push(css + ': ' + (w ? 'word at ' + w.getAttribute('x') + ', real ' + real.toFixed(1) : 'no whole-word "office"'));
+      m.c.destroy(); stage.textContent = '';
+    }
+    return !bad.length ? true : bad.join('; ');
+  });
+
+  await test('an inline heading keeps the plain heading (it has no box to draw in)', async function () {
+    var m = await mounted('Lager', 'display:inline'), o = m.overlay, p = plainText(m.h); m.c.destroy();
+    return !o && p ? true : 'overlay drawn ' + o + ', text visible ' + p;
+  });
+
+  await test('harmless transforms still pour: translateZ(0), rotate: 0deg, an identity matrix', async function () {
+    var bad = [];
+    for (var wrap of ['transform:translateZ(0)', 'rotate:0deg', 'transform:matrix(1,0,0,1,0,0)']) {
+      stage.style.cssText = wrap;
+      var m = await mounted('Lager', '');
+      if (!m.overlay) bad.push(wrap); m.c.destroy(); stage.textContent = ''; stage.style.cssText = '';
+    }
+    return !bad.length ? true : 'plain heading under ' + bad.join(', ');
   });
 
   await test('small caps keep the plain heading', async function () {

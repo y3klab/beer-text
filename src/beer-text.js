@@ -46,11 +46,11 @@ function smooth(pts, lead) {   // Catmull-Rom through the samples, as cubic Bezi
 }
 function rev(a) { return a.slice().reverse(); }
 // Draw one measured line on a canvas. Where the line's spacing isn't the font's own (letter-spacing, word-spacing,
-// preserved or justified spaces), each character goes where the browser laid it out: canvas letterSpacing is
-// missing in some browsers, and drawn whole the shapes would bunch up.
+// preserved or justified spaces), each character or word goes where the browser laid it out: canvas letterSpacing
+// is missing in some browsers, and drawn whole the shapes would bunch up.
 function fillLine(cx, l, m, dy) {
   if (!m.each) { cx.fillText(l.text, l.x, l.base - dy); return; }
-  l.chars.forEach(function (c) { if (c.c !== ' ') cx.fillText(c.t, c.x, l.base - dy); });
+  l.units.forEach(function (u) { cx.fillText(u.t, u.x, l.base - dy); });
 }
 function transform(text, tt) {
   if (tt === 'uppercase') return text.toUpperCase();
@@ -70,18 +70,20 @@ function clusters(s) {
 }
 
 // Typography the overlay can't reproduce, where the plain heading is kept instead: right-to-left text (lines are
-// read left to right), small caps (canvas and SVG text can't be relied on to draw them), and a rotated, skewed or
-// mirrored heading or ancestor. Scale is fine: measure() corrects for it.
+// read left to right), small caps (canvas and SVG text can't be relied on to draw them), an inline heading (no box
+// to draw in), and a rotated, skewed, mirrored or 3D-transformed heading or ancestor. Scale and translation are
+// fine: measure() corrects for scale.
 var RTL = /[\u0590-\u08FF\uFB1D-\uFDFF\uFE70-\uFEFC\u{10800}-\u{10FFF}\u{1E800}-\u{1EFFF}]/u;
 function unsupported(target, cs) {
-  if (cs.direction === 'rtl' || RTL.test(target.textContent)) return true;
+  if (cs.direction === 'rtl' || RTL.test(target.textContent) || !target.clientWidth || !target.clientHeight) return true;
   if (cs.fontVariantCaps && cs.fontVariantCaps !== 'normal') return true;
   for (var e = target; e && e.nodeType === 1; e = e.parentElement) {
     var st = getComputedStyle(e), tf = st.transform;
-    if (st.rotate && st.rotate !== 'none' || st.scale && /-/.test(st.scale)) return true;
+    if (st.rotate && st.rotate !== 'none' && parseFloat(st.rotate) || st.scale && /-/.test(st.scale)) return true;
     if (!tf || tf === 'none') continue;
-    var mx = /^matrix\((.*)\)$/.exec(tf), v = mx && mx[1].split(',').map(parseFloat);
-    if (!v || v[1] || v[2] || !(v[0] > 0) || !(v[3] > 0)) return true;   // matrix3d, rotation, skew or a flip
+    var mx = /^matrix(3d)?\((.*)\)$/.exec(tf), v = mx && mx[2].split(',').map(parseFloat);
+    if (v && mx[1]) v = v[2] || v[3] || v[6] || v[7] || v[8] || v[9] || v[10] !== 1 || v[11] || v[15] !== 1 ? null : [v[0], v[1], v[4], v[5]];   // 3D: translation only
+    if (!v || v[1] || v[2] || !(v[0] > 0) || !(v[3] > 0)) return true;   // rotation, skew, a flip or real 3D
   }
   return false;
 }
@@ -164,8 +166,11 @@ export function pour(target, options) {
     var sy = target.offsetHeight && Math.abs(hr.height - target.offsetHeight) > 1 ? hr.height / target.offsetHeight : 1;
     var ox = hr.left + target.clientLeft * sx, oy = hr.top + target.clientTop * sy;
     var fs = parseFloat(cs.fontSize), ws = cs.whiteSpaceCollapse || cs.whiteSpace;
-    var each = !!(parseFloat(cs.letterSpacing) || parseFloat(cs.wordSpacing) || /^(pre|pre-wrap|break-spaces|preserve|preserve-spaces)$/.test(ws) ||
-                  cs.textAlign === 'justify' || cs.textAlignLast === 'justify');
+    // each: how a line is placed when the browser's spacing isn't the font's own. Letter-spacing moves every
+    // character ('char'; browsers drop ligatures there too); word-spacing, preserved spaces and justify only move
+    // words ('word': each word whole, so ligatures and contextual shapes survive).
+    var each = parseFloat(cs.letterSpacing) ? 'char' : parseFloat(cs.wordSpacing) || /^(pre|pre-wrap|break-spaces|preserve|preserve-spaces)$/.test(ws) ||
+               cs.textAlign === 'justify' || cs.textAlignLast === 'justify' ? 'word' : '';
     var walker = document.createTreeWalker(target, NodeFilter.SHOW_TEXT | NodeFilter.SHOW_ELEMENT, {
       acceptNode: function (n) { return (n.nodeType === 1 ? n : n.parentNode).closest('[data-beer-text]') ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT; }
     });
@@ -188,6 +193,16 @@ export function pour(target, options) {
         }
       });
     }
+    // The pieces a line is drawn in: one per character, or one per word.
+    function units(ch) {
+      var out = [], u = null;
+      ch.forEach(function (c) {
+        if (c.c === ' ') { u = null; return; }
+        if (each === 'char' || !u) out.push(u = { t: '', x: (c.l - ox) / sx });
+        u.t += c.t;
+      });
+      return out;
+    }
     lines = lines.map(function (ln) {
       var ch = ln.chars;
       while (ch.length && ch[0].c === ' ') ch.shift();
@@ -203,7 +218,7 @@ export function pour(target, options) {
       }
       var raw = ch.map(function (c) { return cap ? c.t : c.c; }).join('').replace(/ +/g, ' ');
       return { text: cap ? raw : transform(raw, cs.textTransform), x: (ch[0].l - ox) / sx, w: (ch[ch.length - 1].r - ch[0].l) / sx, top: ln.top,
-               chars: ch.map(function (c) { return { c: c.c, t: c.t, x: (c.l - ox) / sx }; }) };
+               chars: ch.map(function (c) { return { c: c.c, t: c.t, x: (c.l - ox) / sx }; }), units: units(ch) };
     }).filter(Boolean);
     if (!lines.length) return null;
     // The probe goes right after the last text, on its line: appended to the heading, it would land below a block child.
@@ -256,11 +271,11 @@ export function pour(target, options) {
     var clip = g.clip = el('clipPath', { id: id + 'glyphs', clipPathUnits: 'userSpaceOnUse' });   // attached to holder() on mount
     // Placed like fillLine, never stretched to the measured width: iOS Safari reports the last letter's right
     // edge too far out (Anton: 5.8px at 54px) and ignores letter-spacing on SVG text, so a textLength stretch
-    // pulled the beer letters off the real ones. With letter-spacing, each character at its measured left.
+    // pulled the beer letters off the real ones. With other spacing, each character or word at its measured left.
     L.forEach(function (l) {
       var t = el('text', { x: l.x, y: l.base, 'font-family': cs.fontFamily, 'font-size': m.fs, 'font-weight': cs.fontWeight, 'font-style': cs.fontStyle }, clip);
       if (!m.each) { t.textContent = l.text; return; }
-      l.chars.forEach(function (c) { if (c.c !== ' ') el('tspan', { x: c.x }, t).textContent = c.t; });
+      l.units.forEach(function (u) { el('tspan', { x: u.x }, t).textContent = u.t; });
     });
     var beer = el('linearGradient', { id: id + 'beer', gradientUnits: 'userSpaceOnUse', x1: 0, y1: g.surf, x2: 0, y2: g.bottom }, defs);
     ['0', '0.30', '0.65', '1'].forEach(function (off, i) { el('stop', { offset: off, 'stop-color': colors.beer[i] }, beer); });

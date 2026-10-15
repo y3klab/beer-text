@@ -21,9 +21,13 @@
 
   var out = document.getElementById('out'), stage = document.getElementById('stage'), results = [], errors = [];
   // Errors from browser extensions (a password manager's script on the page) aren't the library's; anything else fails the case.
-  var foreign = function (src) { return /(safari-web-extension|moz-extension|chrome-extension|webkit-masked-url):\/\//.test(src || ''); };
-  addEventListener('error', function (e) { if (!foreign(e.filename) && !foreign(e.error && e.error.stack)) errors.push(e.message); });
-  addEventListener('unhandledrejection', function (e) { if (!foreign(e.reason && e.reason.stack)) errors.push('rejection: ' + (e.reason && e.reason.message || e.reason) + (e.reason && e.reason.stack ? ' @ ' + String(e.reason.stack).split('\n')[0] : '')); });
+  // Judged by where the error was raised: the error's file, or the first frame of a rejection's stack that names a URL.
+  var foreign = function (src) { return /^(safari-web-extension|moz-extension|chrome-extension|webkit-masked-url):\/\//.test(src || ''); };
+  var origin = function (stack) { var f = /(?:@|at |\()((?:[a-z-]+):\/\/[^\s)]+)/.exec(String(stack || '')); return f ? f[1] : ''; };
+  // "Script error." with no file is the muted form of an error from a script on another origin; this page's own
+  // module is same-origin, so its errors always carry their file.
+  addEventListener('error', function (e) { if (!foreign(e.filename) && !(!e.filename && e.message === 'Script error.')) errors.push(e.message); });
+  addEventListener('unhandledrejection', function (e) { if (!foreign(origin(e.reason && e.reason.stack))) errors.push('rejection: ' + (e.reason && e.reason.message || e.reason) + (e.reason && e.reason.stack ? ' @ ' + String(e.reason.stack).split('\n')[0] : '')); });
   var sleep = function (ms) { return new Promise(function (r) { setTimeout(r, ms); }); };
   function within(p, ms) { return Promise.race([p.then(function () { return true; }), sleep(ms).then(function () { return false; })]); }
   function heading(text) { stage.textContent = ''; var h = document.createElement('h2'); h.textContent = text || 'Lager'; stage.appendChild(h); return h; }

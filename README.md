@@ -47,7 +47,8 @@ title.addEventListener('click', () => pint.replay());
 - Long titles wrap wherever the browser breaks them. For even line lengths, add `text-wrap: balance` to the heading's CSS.
 - Put real spaces between words. Gaps made only with CSS margins or padding between inline elements are not reproduced in the beer.
 - One font per heading. The heading's own font is used, so any web font or system font works.
-- Some typography keeps the plain heading instead of pouring: right-to-left text (Hebrew, Arabic), small caps, and a heading that is rotated, skewed or mirrored (on itself or an ancestor). Scaled headings, accents typed as separate characters, preserved spaces, `word-spacing` and justified text are drawn to match.
+- Some typography keeps the plain heading instead of pouring: right-to-left text (Hebrew, Arabic), small caps, an inline heading (use `display: block` or `inline-block`), and a heading that is rotated, skewed, mirrored or 3D-transformed (on itself or an ancestor). Scaled headings, accents typed as separate characters, preserved spaces, `word-spacing` and justified text are drawn to match.
+- One font, size and baseline per heading: a word raised or lowered with `vertical-align`, or set in another size, is not reproduced in the beer.
 - Animation runs only while the heading is on screen and the tab is visible.
 - The overlay is rebuilt whenever the heading's width or height changes. A font change that leaves the heading's box the same size (a fixed `line-height` with a new `font-size`, say) is not noticed: call `destroy()` and `pour()` again.
 - The letter shapes are cut with a hidden copy of the heading's text (hidden from screen readers too), kept at the end of the page rather than inside the heading, so the heading's own text is unchanged. Find-in-page may count the heading twice, and anything that reads the whole page's text may see the copy as well; how search engines treat it has not been tested.
