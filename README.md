@@ -23,7 +23,7 @@ Or `npm install beer-text` and `import { pour } from 'beer-text'`.
 | `preset` | `'lager'` | `lager`, `wheat`, `ipa`, `amber` or `stout`; any other name pours lager |
 | `colors` | | Override any preset color (`band`, `foam`, `cream`, `bubble`, `bubbleDeep`, `highlight`, `haze`, `fizz`) with a CSS color. `beer` is the gradient, surface to bottom: four colors in an array, or one color for all four. A value that is not a CSS color is ignored |
 | `empty` | the text color | The letters' color before the beer arrives (a CSS color) |
-| `head` | see note | The settled head, as a fraction of the letters' height. Default: about `0.30` for one line, `0.22` for two, `0.20` for three or more. Kept between `0.05` and `0.6` |
+| `head` | see note | The settled head, as a fraction of the letters' height. By default the head is 30% of the first line's letters, however many lines there are. Kept between `0.05` and `0.6` |
 | `autoplay` | `true` | Pour when the heading is mostly in view; `false` shows the full pint |
 | `once` | `false` | `'session'` pours once per browser tab session (a reload pours again). Remembered by the heading's text, so the same title on two pages pours once |
 

@@ -130,8 +130,8 @@ function fontReady(spec, text) {   // spec: a function, read on every attempt
  * @param {string} [options.preset='lager'] - lager, wheat, ipa, amber or stout.
  * @param {object} [options.colors] - overrides for any preset color (see presets).
  * @param {string} [options.empty] - the letters' color before the beer arrives; defaults to the text color.
- * @param {number} [options.head] - the settled head, as a fraction of the letters' height. By default a one-line
- *   heading gets 0.30, two lines 0.22, three or more 0.20.
+ * @param {number} [options.head] - the settled head, as a fraction of the letters' height. By default the head
+ *   is 30% of the first line's letters, however many lines there are.
  * @param {boolean} [options.autoplay=true] - pour when the heading is mostly in view; false shows the full pint.
  * @param {false|'session'} [options.once=false] - 'session' pours once per browser session (a reload pours again).
  * @returns {{ finished: Promise<void>, replay: function, finish: function, destroy: function }}
@@ -280,10 +280,10 @@ export function pour(target, options) {
     var L = m.lines, g = {};
     var last = L[L.length - 1];
     g.top = L[0].base - m.capH; g.bottom = last.base; g.H = g.bottom - g.top;
-    // Default head, as a share of the title's height: 32% for one line, 22% for two, 20% for three or more,
-    // so the head's share shrinks as the title stacks (David, 2026-10-09).
-    var vt = L[0].base - m.bodyH, vH = g.bottom - vt;   // the top and height the eye reads as the glass
-    g.surf = head != null ? g.top + head * g.H : vt + (L.length > 2 ? 0.20 : L.length > 1 ? 0.22 : 0.30) * vH;
+    // Default head: 30% of the first line's letters, however many lines follow, so a stacked title's head
+    // looks the same as a one-line title's (David, 2026-10-16; it was a share of the whole title, too deep on two lines).
+    var vt = L[0].base - m.bodyH;   // the top the eye reads as the glass
+    g.surf = head != null ? g.top + head * g.H : vt + 0.30 * m.bodyH;
     g.headT = g.surf - g.top; g.hFinal = g.bottom - g.surf;
     g.minX = Math.min.apply(null, L.map(function (l) { return l.x; })) - 2;
     g.maxX = Math.max.apply(null, L.map(function (l) { return l.x + l.w; })) + 2;
