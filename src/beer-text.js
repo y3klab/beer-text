@@ -131,7 +131,7 @@ function fontReady(spec, text) {   // spec: a function, read on every attempt
  * @param {object} [options.colors] - overrides for any preset color (see presets).
  * @param {string} [options.empty] - the letters' color before the beer arrives; defaults to the text color.
  * @param {number} [options.head] - the settled head, as a fraction of the letters' height. By default a one-line
- *   heading gets 0.32, two lines 0.22, three or more 0.20.
+ *   heading gets 0.30, two lines 0.22, three or more 0.20.
  * @param {boolean} [options.autoplay=true] - pour when the heading is mostly in view; false shows the full pint.
  * @param {false|'session'} [options.once=false] - 'session' pours once per browser session (a reload pours again).
  * @returns {{ finished: Promise<void>, replay: function, finish: function, destroy: function }}
@@ -283,7 +283,7 @@ export function pour(target, options) {
     // Default head, as a share of the title's height: 32% for one line, 22% for two, 20% for three or more,
     // so the head's share shrinks as the title stacks (David, 2026-10-09).
     var vt = L[0].base - m.bodyH, vH = g.bottom - vt;   // the top and height the eye reads as the glass
-    g.surf = head != null ? g.top + head * g.H : vt + (L.length > 2 ? 0.20 : L.length > 1 ? 0.22 : 0.32) * vH;
+    g.surf = head != null ? g.top + head * g.H : vt + (L.length > 2 ? 0.20 : L.length > 1 ? 0.22 : 0.30) * vH;
     g.headT = g.surf - g.top; g.hFinal = g.bottom - g.surf;
     g.minX = Math.min.apply(null, L.map(function (l) { return l.x; })) - 2;
     g.maxX = Math.max.apply(null, L.map(function (l) { return l.x + l.w; })) + 2;
