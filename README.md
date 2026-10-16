@@ -1,5 +1,9 @@
 # beer-text
 
+[![The words Beer Text filling with beer: the stream lands, a head builds and settles, and bubbles rise through the letters](https://y3klab.github.io/beer-text/demo/pour.gif)](https://y3klab.github.io/beer-text/demo/)
+
+**[Try the demo](https://y3klab.github.io/beer-text/demo/)**
+
 Fill your headings like a pint of beer. The stream lands, the surface sloshes, a head builds and settles, and carbonation rises through the letters. It is a small physics simulation, not a looping wave, in plain JS and SVG with no dependencies.
 
 The heading stays real text: its own text is unchanged, so screen readers, copy and paste, and scripts that read the heading get the same heading as before.
@@ -64,6 +68,7 @@ Tested in current Safari (macOS and iOS) and Firefox, and in Chrome on the site 
 ## Develop
 
 - Demo: serve the repo root (`python3 -m http.server`) and open `/demo/`.
+- The README's GIF and the share card: `node scripts/record-gif.mjs` (needs ffmpeg) and `node scripts/render-share-card.mjs`, with the repo root served on port 8830 and Google Chrome installed.
 - Tests: `npm test` (physics, in Node), and `test/lifecycle.html`, `test/text.html` and `test/csp.html` in a foreground browser window (serve the repo root and open each page; the title reads ALL PASS or N FAIL).
 
 ## License
