@@ -1,7 +1,7 @@
 {
   "name": "beer-text",
   "version": "0.1.0",
-  "description": "Fill your headings like a pint of beer: a simulated pour with a sloshing surface, foam and carbonation, in plain JS and SVG.",
+  "description": "Your headings, poured: a physics simulation of a beer pour, with a sloshing surface, foam and carbonation, in plain JS and SVG.",
   "type": "module",
   "main": "./src/beer-text.js",
   "exports": {

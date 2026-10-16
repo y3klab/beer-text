@@ -3,65 +3,464 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>beer-text</title>
-<meta name="description" content="Fill your headings like a pint of beer: a simulated pour with a sloshing surface, foam and carbonation.">
+<title>beer-text: fill your headings like a pint of beer</title>
+<meta name="description" content="A physics simulation, not a loop: a beer pour with a sloshing surface, foam and carbonation, in plain JS and SVG with no dependencies. The heading stays real text.">
+<meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#0C1B25">
+<!-- Favicon: the pint glyph from the top bar (cream head over lager), no file to serve. -->
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='-2 -1 14 16'%3E%3Cpath d='M0 2a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v9a3 3 0 0 1-3 3H3a3 3 0 0 1-3-3z' fill='%23E8A638'/%3E%3Cpath d='M0 2a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v2H0z' fill='%23F3EAD3'/%3E%3C/svg%3E" type="image/svg+xml">
+<!-- Share card: demo/share-card.png, drawn from demo/share-card.html by scripts/render-share-card.mjs (1280 x 640). -->
+<link rel="canonical" href="https://y3klab.github.io/beer-text/demo/">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://y3klab.github.io/beer-text/demo/">
+<meta property="og:title" content="beer-text: your headings, poured">
+<meta property="og:description" content="A physics simulation, not a loop: a beer pour with a sloshing surface, foam and carbonation, in plain JS and SVG with no dependencies. The heading stays real text.">
+<meta property="og:image" content="https://y3klab.github.io/beer-text/demo/share-card.png">
+<meta property="og:image:width" content="1280">
+<meta property="og:image:height" content="640">
+<meta property="og:image:alt" content="The words Beer Text in heavy display type, filled with lager under a foam head, over a dark bar at night. Below: a physics simulation, not a loop. Your headings, poured. And npm install beer-text.">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="beer-text: your headings, poured">
+<meta name="twitter:description" content="A physics simulation, not a loop: a beer pour with a sloshing surface, foam and carbonation, in plain JS and SVG with no dependencies. The heading stays real text.">
+<meta name="twitter:image" content="https://y3klab.github.io/beer-text/demo/share-card.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Anton&family=Inter:wght@400;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=Fraunces:ital,wght@0,400;0,600;1,400&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
-  :root { --bg: #1C4B69; --ink: #F4F1EA; --muted: #B9C9D4; --line: #2E6487; }
+  /* Tokens. The page is a dark bar top; the beer supplies every warm color. */
+  :root {
+    --bg: #0C1B25;            /* the room */
+    --bg-raised: #122836;     /* panels */
+    --bg-lamp: #27516A;       /* the lamp over the hero: light enough that a stout still reads */
+    --line: #23435A;
+    --line-strong: #35607A;
+    --ink: #F3EAD3;           /* the foam's cream, as text */
+    --ink-strong: #FFFFFF;    /* the hero's empty letters */
+    --muted: #A9BCC8;
+    --amber: #E8A638;         /* lager, from the preset */
+    --amber-deep: #B5781F;
+    --focus: #FFD27A;
+    --gutter: clamp(16px, 4vw, 56px);
+    --radius: 6px;
+    --display: Anton, Impact, "Arial Narrow Bold", sans-serif;
+    --serif: Fraunces, Georgia, "Times New Roman", serif;
+    --mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
   * { box-sizing: border-box; }
-  body { margin: 0; background: var(--bg); color: var(--ink); font: 16px/1.5 Inter, system-ui, sans-serif; }
-  main { max-width: 1100px; margin: 0 auto; padding: 48px 16px 80px; }
-  .hero { font-family: Anton, Impact, sans-serif; font-weight: 400; font-size: clamp(5rem, 24vw, 17rem); line-height: 0.9; letter-spacing: 0.01em; margin: 0; color: #FFFFFF; cursor: pointer; }
-  p.lede { color: var(--muted); max-width: 40em; margin: 24px 0; }
-  .controls { display: flex; flex-wrap: wrap; gap: 8px; margin: 24px 0 48px; }
-  button { font: 600 14px Inter, sans-serif; color: var(--ink); background: transparent; border: 1px solid var(--line); border-radius: 999px; padding: 10px 16px; min-height: 44px; cursor: pointer; }
-  button[aria-pressed="true"] { background: var(--ink); color: var(--bg); border-color: var(--ink); }
-  .row { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 24px; border-top: 1px solid var(--line); padding-top: 32px; }
-  .row h2 { font-family: Anton, Impact, sans-serif; font-weight: 400; font-size: 3rem; line-height: 1; margin: 0; color: #FFFFFF; }
-  .row figcaption, .long figcaption { color: var(--muted); font-size: 14px; margin-top: 4px; }
-  figure { margin: 0; }
-  .long { border-top: 1px solid var(--line); margin-top: 48px; padding-top: 32px; }
-  .stack { font-family: Anton, Impact, sans-serif; font-weight: 400; text-transform: uppercase; font-size: clamp(2.5rem, 11vw, 8rem); line-height: 0.95; max-width: 9em; text-wrap: balance; margin: 0; color: #FFFFFF; cursor: pointer; }
-  pre { background: #143A52; border-radius: 8px; padding: 16px; overflow-x: auto; font-size: 14px; margin-top: 48px; }
+  html { background: var(--bg); scroll-behavior: smooth; }
+  body { margin: 0; color: var(--ink); background: var(--bg); font: 400 17px/1.55 var(--serif); -webkit-font-smoothing: antialiased; }
+  a { color: inherit; text-decoration-color: var(--amber-deep); text-decoration-thickness: 1px; text-underline-offset: .18em; }
+  a:hover { text-decoration-color: var(--amber); }
+  :focus-visible { outline: 2px solid var(--focus); outline-offset: 3px; border-radius: 2px; }
+  ::selection { background: var(--amber); color: #1A1005; }
+  code, kbd, pre, .mono { font-family: var(--mono); font-size: .86em; }
+  .wrap { width: min(1240px, 100%); margin-inline: auto; padding-inline: var(--gutter); }
+
+  /* Buttons: one shape, two weights. Filled is the primary action; outlined everything else. */
+  .btn { display: inline-flex; align-items: center; gap: .5em; min-height: 44px; padding: 0 18px; border-radius: 999px; border: 1px solid var(--line-strong); background: transparent; color: var(--ink); font: 500 14px/1 var(--mono); letter-spacing: .01em; cursor: pointer; transition: background-color .15s, border-color .15s, color .15s; }
+  .btn:hover { border-color: var(--ink); background: rgba(243, 234, 211, .06); }
+  .btn.fill { background: var(--amber); border-color: var(--amber); color: #1A1005; }
+  .btn.fill:hover { background: #F0B14A; border-color: #F0B14A; }
+  .btn svg { width: 14px; height: 14px; flex: none; }
+
+  /* Top bar */
+  .top { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px 16px; padding-block: 18px; font-family: var(--mono); font-size: 13px; }
+  /* Breadcrumb: Y3K Lab / beer-text, as on the other Y3K Lab pages. The lab's color ramp is the page's only neon. */
+  .uplink { display: flex; align-items: center; gap: 10px; }
+  .uplink .home { font-size: 12px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; text-decoration: none; white-space: nowrap;
+    background: linear-gradient(100deg, #ff5fff, #d75fd7, #af5fff, #875fff, #5fafff, #00d7ff, #00ffff); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .uplink .home:hover, .uplink .home:focus-visible { filter: brightness(1.25); }
+  .uplink .sep { color: var(--line-strong); }
+  @media (forced-colors: active) { .uplink .home { background: none; color: LinkText; } }
+  .top .name { display: inline-flex; align-items: center; gap: 10px; font-weight: 500; text-decoration: none; letter-spacing: .02em; white-space: nowrap; }
+  .top .name i { display: inline-block; width: 10px; height: 14px; border-radius: 2px 2px 3px 3px; background: linear-gradient(to bottom, var(--ink) 0 28%, var(--amber) 28%); }
+  .top nav { display: flex; gap: 6px 22px; flex-wrap: wrap; justify-content: flex-end; }
+  .top nav a { text-decoration: none; color: var(--muted); }
+  .top nav a:hover { color: var(--ink); }
+
+  /* Hero: the lamp. A radial pool of light under the title and a little grain so the dark is not flat. */
+  .hero { position: relative; padding: clamp(28px, 6vw, 72px) 0 clamp(40px, 6vw, 72px); isolation: isolate; }
+  .hero::before { content: ""; position: absolute; inset: -40px 0 0; z-index: -2; pointer-events: none;
+    background: radial-gradient(ellipse 62% 58% at 50% 42%, var(--bg-lamp) 0%, #16303F 48%, transparent 100%); }
+  .hero::after { content: ""; position: absolute; inset: 0; z-index: -1; pointer-events: none; opacity: .09; mix-blend-mode: soft-light;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E"); }
+  .title { font-family: var(--display); font-weight: 400; font-size: clamp(4.25rem, 17vw, 16rem); line-height: .9; letter-spacing: .005em; margin: 0; color: var(--ink-strong); cursor: pointer; text-wrap: balance; -webkit-tap-highlight-color: transparent; }
+  .title:focus-visible { outline-offset: 8px; }
+  .lede { max-width: 38em; margin: clamp(20px, 3vw, 32px) 0 0; font-size: clamp(1.1rem, 1rem + .5vw, 1.4rem); line-height: 1.45; color: var(--ink); text-wrap: pretty; }
+  .lede em { font-style: italic; color: var(--amber); }
+  .hero-row { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 14px; margin-top: 28px; }
+  .status { font-family: var(--mono); font-size: 13px; color: var(--muted); min-width: 7em; }
+  .status::before { content: ""; display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--line-strong); margin-right: 8px; vertical-align: 1px; transition: background-color .3s; }
+  .status[data-state="pouring"]::before { background: var(--amber); }
+  .status[data-state="settled"]::before { background: var(--ink); }
+  .hint { font-family: var(--mono); font-size: 13px; color: var(--muted); margin: 14px 0 0; }
+  .hint kbd { border: 1px solid var(--line-strong); border-radius: 4px; padding: 1px 6px; font-size: 12px; }
+
+  /* The install line, in the hero because that is the five-second decision. */
+  .install { display: inline-flex; align-items: stretch; margin-top: 28px; max-width: 100%; border: 1px solid var(--line-strong); border-radius: var(--radius); background: rgba(12, 27, 37, .55); backdrop-filter: blur(6px); }
+  .install code { display: flex; align-items: center; gap: 10px; padding: 12px 16px; font-size: 14px; white-space: nowrap; overflow-x: auto; color: var(--ink); }
+  .install code b { color: var(--amber); font-weight: 400; }
+  .copy { flex: none; display: inline-flex; align-items: center; gap: 8px; padding: 0 14px; border: 0; border-left: 1px solid var(--line-strong); background: transparent; color: var(--muted); font: 500 13px/1 var(--mono); cursor: pointer; min-width: 44px; min-height: 44px; }
+  .copy:hover { color: var(--ink); background: rgba(243, 234, 211, .06); }
+  .copy[data-done="true"] { color: var(--amber); }
+  .copy svg { width: 14px; height: 14px; }
+
+  /* Tap board: the five presets. Each handle is a poured heading in its own style and picks the hero's beer. */
+  .taps { padding-block: 8px clamp(40px, 6vw, 72px); }
+  .board-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px 16px; flex-wrap: wrap; margin-bottom: 16px; }
+  .kicker { font: 500 12px/1 var(--mono); letter-spacing: .14em; text-transform: uppercase; color: var(--muted); margin: 0; }
+  .board-head p { margin: 0; font-size: 15px; color: var(--muted); font-style: italic; }
+  .board { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px; margin: 0; padding: 0; list-style: none; }
+  .tap { position: relative; display: flex; flex-direction: column; align-items: stretch; width: 100%; min-height: 150px; padding: 18px 16px 14px; text-align: left; border: 1px solid var(--line); border-radius: var(--radius); background: var(--bg-raised); color: var(--ink); cursor: pointer; transition: border-color .15s, background-color .15s; }
+  .tap:hover { border-color: var(--line-strong); background: #163142; }
+  .tap[aria-pressed="true"] { border-color: var(--amber); box-shadow: inset 0 0 0 1px var(--amber); }
+  .tap[aria-pressed="true"]::after { content: "on tap"; position: absolute; top: 12px; right: 12px; font: 500 10px/1 var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--amber); }
+  .tap-word { display: block; font-family: var(--display); font-weight: 400; font-size: clamp(2.6rem, 2rem + 1.6vw, 3.6rem); line-height: 1; text-transform: uppercase; letter-spacing: .01em; color: var(--ink-strong); margin-top: auto; }
+  .tap-key { display: block; margin-top: 12px; font: 400 12px/1.3 var(--mono); color: var(--muted); }
+  .tap-key b { font-weight: 400; color: var(--ink); }
+
+  /* Your pour: the options that matter, live, next to the snippet they produce. */
+  .pourbox { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); gap: 1px; border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; background: var(--line); }
+  .pourbox > * { background: var(--bg-raised); padding: clamp(20px, 3vw, 32px); min-width: 0; margin: 0; }
+  .field { display: grid; gap: 10px; padding-block: 16px; border-top: 1px solid var(--line); }
+  .field:first-of-type { border-top: 0; padding-top: 4px; }
+  .field-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+  .field-head label, .field-head .lab { font: 500 12px/1 var(--mono); letter-spacing: .14em; text-transform: uppercase; color: var(--muted); }
+  .field-head output { font: 400 13px/1 var(--mono); color: var(--ink); }
+  .field p { margin: 0; font-size: 14px; color: var(--muted); line-height: 1.5; }
+  input[type="range"] { -webkit-appearance: none; appearance: none; width: 100%; height: 28px; margin: 0; background: transparent; cursor: pointer; }
+  input[type="range"]::-webkit-slider-runnable-track { height: 2px; background: var(--line-strong); border-radius: 1px; }
+  input[type="range"]::-moz-range-track { height: 2px; background: var(--line-strong); border-radius: 1px; }
+  input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; width: 22px; height: 22px; margin-top: -10px; border-radius: 50%; background: var(--ink); border: 4px solid var(--bg-raised); box-shadow: 0 0 0 1px var(--line-strong); }
+  input[type="range"]::-moz-range-thumb { width: 14px; height: 14px; border-radius: 50%; background: var(--ink); border: 4px solid var(--bg-raised); box-shadow: 0 0 0 1px var(--line-strong); }
+  input[type="range"]:focus-visible { outline: none; }
+  input[type="range"]:focus-visible::-webkit-slider-thumb { outline: 2px solid var(--focus); outline-offset: 2px; }
+  input[type="range"]:focus-visible::-moz-range-thumb { outline: 2px solid var(--focus); outline-offset: 2px; }
+  .swatches { display: flex; flex-wrap: wrap; gap: 8px; }
+  .swatch { position: relative; display: inline-flex; align-items: center; gap: 10px; min-height: 40px; padding: 0 14px 0 8px; border-radius: 999px; border: 1px solid var(--line-strong); cursor: pointer; font: 400 13px/1 var(--mono); color: var(--ink); }
+  .swatch input { position: absolute; inset: 0; opacity: 0; margin: 0; cursor: pointer; }
+  .swatch i { width: 22px; height: 22px; border-radius: 50%; border: 1px solid rgba(243, 234, 211, .25); }
+  .swatch:has(input:checked) { border-color: var(--amber); box-shadow: inset 0 0 0 1px var(--amber); }
+  .swatch:has(input:focus-visible) { outline: 2px solid var(--focus); outline-offset: 3px; }
+  .actions { display: flex; flex-wrap: wrap; gap: 10px; padding-top: 20px; }
+  .snippet { display: flex; flex-direction: column; }
+  .snippet-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
+  .snippet pre { margin: 0; padding: 0; font-size: 14px; line-height: 1.6; overflow-x: auto; color: var(--ink); background: transparent; tab-size: 2; }
+  .snippet .k { color: #8FC4E0; }
+  .snippet .s { color: var(--amber); }
+  .snippet .n { color: #F0B14A; }
+  .snippet .after { margin: 0; padding-top: 24px; font-size: 14px; color: var(--muted); line-height: 1.6; }
+  .snippet .after code { color: var(--ink); overflow-wrap: anywhere; }
+
+  /* How it works, with a poured two-line heading as the wrapping example. */
+  .facts { padding-block: clamp(56px, 8vw, 104px) 0; border-top: 1px solid var(--line); margin-top: clamp(48px, 7vw, 88px); }
+  .stack { font-family: var(--display); font-weight: 400; text-transform: uppercase; font-size: clamp(2.75rem, 1.5rem + 7vw, 7.5rem); line-height: .95; letter-spacing: .005em; max-width: 9.5em; text-wrap: balance; margin: 18px 0 0; color: var(--ink-strong); cursor: pointer; -webkit-tap-highlight-color: transparent; }
+  .facts .caption { font-family: var(--mono); font-size: 13px; color: var(--muted); margin: 14px 0 0; }
+  .grid3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 32px var(--gutter); margin-top: clamp(36px, 5vw, 64px); }
+  .grid3 h3 { font: 600 1.15rem/1.3 var(--serif); margin: 0 0 8px; }
+  .grid3 h3 span { display: block; font: 500 12px/1 var(--mono); letter-spacing: .14em; text-transform: uppercase; color: var(--amber); margin-bottom: 12px; }
+  .grid3 p { margin: 0; color: var(--muted); font-size: 15.5px; }
+
+  /* Accessibility: plain, honest, from the README. */
+  .a11y { padding-block: clamp(56px, 8vw, 96px) 0; }
+  .a11y .inner { display: grid; grid-template-columns: minmax(0, 4fr) minmax(0, 8fr); gap: 24px var(--gutter); align-items: start; }
+  .a11y h2 { font: 600 clamp(1.6rem, 1.2rem + 1.5vw, 2.4rem)/1.15 var(--serif); margin: 10px 0 0; letter-spacing: -.01em; }
+  .a11y ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 0; border-top: 1px solid var(--line); }
+  .a11y li { display: grid; grid-template-columns: 11em minmax(0, 1fr); gap: 8px 20px; padding: 18px 0; border-bottom: 1px solid var(--line); }
+  .a11y li b { font: 500 12px/1.6 var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--amber); }
+  .a11y li p { margin: 0; color: var(--ink); font-size: 16px; }
+
+  footer { margin-top: clamp(64px, 9vw, 120px); padding-block: 28px 40px; border-top: 1px solid var(--line); }
+  footer .row { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 10px 24px; font-family: var(--mono); font-size: 13px; color: var(--muted); }
+  footer nav { display: flex; flex-wrap: wrap; gap: 6px 22px; }
+  footer a { text-decoration: none; overflow-wrap: anywhere; }
+  footer a:hover { color: var(--ink); }
+
+  /* Narrow screens: the board stacks two across with the stout across the bottom; the pour box stacks. */
+  @media (max-width: 900px) {
+    .board { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .board li:last-child { grid-column: 1 / -1; }
+    .pourbox, .a11y .inner { grid-template-columns: minmax(0, 1fr); }
+    .grid3 { grid-template-columns: minmax(0, 1fr); gap: 28px; }
+  }
+  @media (max-width: 560px) {
+    .title { font-size: 22vw; }   /* one line, edge to edge: "Beer Text" is about 3.9em wide in Anton */
+    .tap { min-height: 128px; padding: 14px 14px 12px; }
+    .snippet pre { font-size: 13px; white-space: pre-wrap; overflow-wrap: anywhere; }
+    .a11y li { grid-template-columns: minmax(0, 1fr); gap: 4px; }
+    .install { display: flex; }
+    .install code { flex: 1; }
+  }
+
+  /* Entrance: prose and controls fade up once; the pour is the only big motion on the page. */
+  @media (prefers-reduced-motion: no-preference) {
+    .rise { animation: rise .7s cubic-bezier(.2, .7, .2, 1) both; animation-delay: var(--d, 0s); }
+    @keyframes rise { from { opacity: 0; translate: 0 10px; } to { opacity: 1; translate: 0 0; } }
+  }
+  @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+  @media (forced-colors: active) {
+    .tap[aria-pressed="true"], .swatch:has(input:checked) { outline: 3px solid; outline-offset: -3px; }
+    .btn.fill { border: 2px solid; }
+    .hero::before, .hero::after { display: none; }
+  }
 </style>
 </head>
 <body>
-<main>
-  <h1 class="hero" id="hero">Beer Text</h1>
-  <p class="lede">beer-text pours a pint into your heading: the surface sloshes, the stream builds a head that settles, and carbonation rises through the letters. Plain JS and SVG, no dependencies, and the heading stays real text. Click it to pour again.</p>
-  <div class="controls" id="presets" role="group" aria-label="Beer style"></div>
-  <div class="row" id="row"></div>
-  <figure class="long">
-    <h2 class="stack" id="stack">Poured by physics, not keyframes</h2>
-    <figcaption>Long titles wrap: each line fills, and the head settles in the first line.</figcaption>
-  </figure>
-  <pre><code>import { pour } from 'beer-text';
+<header class="wrap top">
+  <nav class="uplink" aria-label="Breadcrumb">
+    <a class="home" href="https://y3klab.com/">Y3K Lab</a>
+    <span class="sep" aria-hidden="true">/</span>
+    <a class="name" href="#" aria-current="page"><i aria-hidden="true"></i>beer-text</a>
+  </nav>
+  <nav aria-label="Project links">
+    <a href="https://github.com/y3klab/beer-text">GitHub</a>
+    <a href="https://www.npmjs.com/package/beer-text">npm</a>
+    <a href="#pour">Options</a>
+    <a href="#a11y">Accessibility</a>
+  </nav>
+</header>
 
-pour(document.querySelector('h1'), { preset: 'lager' });</code></pre>
+<main>
+  <section class="hero" aria-labelledby="hero">
+    <div class="wrap">
+      <h1 class="title" id="hero" tabindex="0" title="Pour again">Beer Text</h1>
+      <p class="lede rise" style="--d: .1s">Fill your headings like a pint of beer. The stream lands, the surface sloshes, a head builds and settles, and carbonation rises through the letters. <em>A small physics simulation, not a looping wave,</em> in plain JS and SVG with no dependencies.</p>
+      <div class="hero-row rise" style="--d: .2s">
+        <button class="btn fill" type="button" id="replay">
+          <svg viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M13.5 8a5.5 5.5 0 1 1-1.6-3.9"/><path d="M13.5 2.5v3h-3"/></svg>
+          Pour again
+        </button>
+        <button class="btn" type="button" id="finish">Skip to the full pint</button>
+        <output class="status" id="status" data-state="pouring" aria-live="polite">Pouring</output>
+      </div>
+      <p class="hint rise" style="--d: .3s">Or click the title. Keyboard: focus it and press <kbd>Enter</kbd>.</p>
+      <div class="install rise" style="--d: .4s">
+        <code id="install-line"><b>npm</b> install beer-text</code>
+        <button class="copy" type="button" data-copy="npm install beer-text" aria-label="Copy the install command">
+          <svg viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="5.5" y="5.5" width="8" height="8" rx="1.5"/><path d="M10.5 5.5v-2a1 1 0 0 0-1-1h-6a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h2"/></svg>
+          <span>Copy</span>
+        </button>
+      </div>
+    </div>
+  </section>
+
+  <section class="wrap taps" aria-labelledby="taps-h">
+    <div class="board-head">
+      <h2 class="kicker" id="taps-h">Five presets</h2>
+      <p>Pick one and the title pours in it. Override any color with the <code>colors</code> option.</p>
+    </div>
+    <ul class="board" id="board"></ul>
+  </section>
+
+  <section class="wrap" id="pour" aria-labelledby="pour-h">
+    <div class="board-head">
+      <h2 class="kicker" id="pour-h">Your pour</h2>
+      <p>Every change pours the title again, once it is back on screen. The snippet keeps up.</p>
+    </div>
+    <div class="pourbox">
+      <form class="controls" id="controls">
+        <div class="field">
+          <div class="field-head">
+            <label for="head">Head</label>
+            <output for="head" id="head-out">default</output>
+          </div>
+          <input type="range" id="head" min="5" max="60" step="1" value="30" aria-describedby="head-help">
+          <p id="head-help">The settled head, as a fraction of the letters' height. By default, 30% of the first line's letters, however many lines there are.</p>
+        </div>
+        <div class="field">
+          <div class="field-head">
+            <span class="lab" id="empty-lab">Empty</span>
+          </div>
+          <div class="swatches" role="radiogroup" aria-labelledby="empty-lab" id="empty">
+            <label class="swatch"><input type="radio" name="empty" value="" checked><i style="background:#FFFFFF" aria-hidden="true"></i>text color</label>
+            <label class="swatch"><input type="radio" name="empty" value="#1B3747"><i style="background:#1B3747" aria-hidden="true"></i>dark glass</label>
+            <label class="swatch"><input type="radio" name="empty" value="#8FB0C2"><i style="background:#8FB0C2" aria-hidden="true"></i>frosted</label>
+          </div>
+          <p>The letters' color before the beer arrives. By default, the heading's own text color.</p>
+        </div>
+        <div class="actions">
+          <button class="btn" type="button" data-act="replay">replay()</button>
+          <button class="btn" type="button" data-act="finish">finish()</button>
+          <button class="btn" type="button" data-act="reset">Reset options</button>
+        </div>
+      </form>
+      <div class="snippet">
+        <div class="snippet-head">
+          <span class="kicker">Snippet</span>
+          <button class="copy" type="button" id="copy-snippet" aria-label="Copy the snippet">
+            <svg viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="5.5" y="5.5" width="8" height="8" rx="1.5"/><path d="M10.5 5.5v-2a1 1 0 0 0-1-1h-6a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h2"/></svg>
+            <span>Copy</span>
+          </button>
+        </div>
+        <pre><code id="snippet"></code></pre>
+        <p class="after"><code>pour()</code> returns a controller: <code>finished</code> (a promise for the current pour), <code>replay()</code>, <code>finish()</code> and <code>destroy()</code>. Or load it from a CDN: <code>import { pour } from 'https://cdn.jsdelivr.net/npm/beer-text@0.1/+esm'</code>.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="wrap facts" aria-labelledby="stack">
+    <p class="kicker">How it works</p>
+    <h2 class="stack" id="stack" tabindex="0" title="Pour again">Poured by physics, not keyframes</h2>
+    <p class="caption">Long titles wrap wherever the browser breaks them: each line fills, and the head settles in the first. Click to pour again.</p>
+    <div class="grid3">
+      <div>
+        <h3><span>Physics</span>A real pour, compressed</h3>
+        <p>The stream lands, the surface sloshes and the head builds and settles with the same shape of decay as a real one, in about a second instead of minutes. Carbonation rises from where the letters' strokes meet the baseline and pops into the head.</p>
+      </div>
+      <div>
+        <h3><span>Typography</span>Your font, your heading</h3>
+        <p>The heading's own font is used, so any web font or system font works; heavy display faces like Anton read best. Uppercase, letter-spacing and wrapped lines are drawn to match. Plain JS and SVG, no dependencies.</p>
+      </div>
+      <div>
+        <h3><span>Honest</span>Real text stays</h3>
+        <p>The heading's text is unchanged: screen readers, copy and paste, and scripts that read the heading get the same heading as before. The beer is an <code>aria-hidden</code> overlay, and if the font never loads or drawing throws, the plain heading stays.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="wrap a11y" id="a11y" aria-labelledby="a11y-h">
+    <div class="inner">
+      <div>
+        <p class="kicker">Accessibility</p>
+        <h2 id="a11y-h">Decoration that gets out of the way</h2>
+      </div>
+      <ul>
+        <li><b>Real text</b><p>The heading keeps its own text. Nothing is replaced with images or spans, so assistive tech and copy and paste see the heading you wrote.</p></li>
+        <li><b>Reduced motion</b><p>With <code>prefers-reduced-motion</code>, the heading shows the full pint without pouring. Switching it on mid-pour stops the pour.</p></li>
+        <li><b>Forced colors</b><p>In forced-colors (high contrast) mode nothing is drawn: the plain heading shows in system colors, including when the mode is switched on later.</p></li>
+        <li><b>Fails plain</b><p>If the font never loads, the heading cannot be measured, or drawing throws, the plain heading stays. Animation runs only while the heading is on screen and the tab is visible.</p></li>
+      </ul>
+    </div>
+  </section>
 </main>
+
+<footer class="wrap">
+  <div class="row">
+    <nav aria-label="Footer links">
+      <a href="https://github.com/y3klab/beer-text">github.com/y3klab/beer-text</a>
+      <a href="https://www.npmjs.com/package/beer-text">npm: beer-text</a>
+    </nav>
+    <span>MIT license. Made by <a href="https://y3klab.com/">Y3K Lab</a>.</span>
+  </div>
+</footer>
+
 <script type="module">
   import { pour, presets } from '../src/beer-text.js';
-  var hero = document.getElementById('hero'), current = 'lager', ctl = pour(hero, { preset: current });
-  hero.addEventListener('click', function () { if (!String(getSelection()).length) ctl.replay(); });
-  var bar = document.getElementById('presets'), row = document.getElementById('row');
+
+  var hero = document.getElementById('hero');
+  var status = document.getElementById('status');
+  var snippet = document.getElementById('snippet');
+  var state = { preset: 'lager', head: null, empty: '' };
+  var ctl = null, pourN = 0;
+  var reduce = matchMedia('(prefers-reduced-motion: reduce)');
+
+  // A pour only runs while the heading is on screen, so bring the title back before pouring it again.
+  function showHero() {
+    var r = hero.getBoundingClientRect();
+    if (r.top < 0 || r.bottom > innerHeight) hero.scrollIntoView({ block: 'nearest', behavior: reduce.matches ? 'auto' : 'smooth' });
+  }
+
+  function options() {
+    var o = { preset: state.preset };
+    if (state.head != null) o.head = state.head;
+    if (state.empty) o.empty = state.empty;
+    return o;
+  }
+  // The status dot follows the controller's `finished` promise for the hero's latest pour.
+  function watch(p) {
+    var n = ++pourN;
+    status.dataset.state = 'pouring'; status.textContent = 'Pouring';
+    p.then(function () { if (n === pourN) { status.dataset.state = 'settled'; status.textContent = 'Settled'; } });
+  }
+  // pour() again on the same heading replaces its controller; the new options show on the next pour.
+  function repour() { ctl = pour(hero, options()); watch(ctl.finished); renderSnippet(); }
+  function replay() { if (ctl) { showHero(); watch(ctl.replay()); } }
+  function finish() { if (ctl) { showHero(); watch(ctl.finish()); } }
+
+  repour();
+  function clickToPour(el, fn) {
+    el.addEventListener('click', function () { if (!String(getSelection()).length) fn(); });
+    el.addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fn(); } });
+  }
+  clickToPour(hero, replay);
+  document.getElementById('replay').addEventListener('click', replay);
+  document.getElementById('finish').addEventListener('click', finish);
+
+  // Tap board: one handle per preset, poured in its own style.
+  var board = document.getElementById('board'), taps = {};
   Object.keys(presets).forEach(function (name) {
-    var b = document.createElement('button');
-    b.textContent = name; b.setAttribute('aria-pressed', name === current);
-    b.onclick = function () {
-      current = name;
-      bar.querySelectorAll('button').forEach(function (x) { x.setAttribute('aria-pressed', x === b); });
-      ctl.destroy(); ctl = pour(hero, { preset: name });
-    };
-    bar.appendChild(b);
-    var fig = document.createElement('figure'), h = document.createElement('h2'), cap = document.createElement('figcaption');
-    h.textContent = 'Beer Text'; cap.textContent = name;
-    fig.append(h, cap); row.appendChild(fig);
-    pour(h, { preset: name });
+    var li = document.createElement('li'), b = document.createElement('button'), w = document.createElement('span'), k = document.createElement('span');
+    b.type = 'button'; b.className = 'tap'; b.setAttribute('aria-pressed', String(name === state.preset));
+    w.className = 'tap-word'; w.textContent = name;
+    k.className = 'tap-key'; k.innerHTML = 'preset: <b>\'' + name + '\'</b>' + (name === 'lager' ? ' (default)' : '');
+    b.append(w, k); li.appendChild(b); board.appendChild(li);
+    var tctl = pour(w, { preset: name });
+    taps[name] = { button: b, ctl: tctl };
+    b.addEventListener('click', function () {
+      if (state.preset !== name) {
+        state.preset = name;
+        Object.keys(taps).forEach(function (n) { taps[n].button.setAttribute('aria-pressed', String(n === name)); });
+        showHero(); repour();
+      } else replay();
+      tctl.replay();
+    });
   });
-  var stack = document.getElementById('stack'), sctl = pour(stack);
-  stack.addEventListener('click', function () { if (!String(getSelection()).length) sctl.replay(); });
+
+  // Options.
+  var headIn = document.getElementById('head'), headOut = document.getElementById('head-out');
+  headIn.addEventListener('input', function () { headOut.textContent = (headIn.value / 100).toFixed(2); });
+  headIn.addEventListener('change', function () { state.head = headIn.value / 100; repour(); });
+  document.getElementById('empty').addEventListener('change', function (e) {
+    if (e.target.name !== 'empty') return;
+    state.empty = e.target.value; repour();
+  });
+  document.getElementById('controls').addEventListener('submit', function (e) { e.preventDefault(); });
+  document.getElementById('controls').addEventListener('click', function (e) {
+    var act = e.target.closest('[data-act]');
+    if (!act) return;
+    if (act.dataset.act === 'replay') replay();
+    else if (act.dataset.act === 'finish') finish();
+    else {
+      state.head = null; state.empty = '';
+      headIn.value = 30; headOut.textContent = 'default';
+      document.querySelector('#empty input[value=""]').checked = true;
+      repour();
+    }
+  });
+
+  // The snippet mirrors the hero's current options.
+  function esc(s) { return s.replace(/&/g, '&amp;').replace(/</g, '&lt;'); }
+  function snippetText() {
+    var o = options(), parts = ["preset: '" + o.preset + "'"];
+    if (o.head != null) parts.push('head: ' + o.head);
+    if (o.empty) parts.push("empty: '" + o.empty + "'");
+    var opts = parts.length > 1 ? '{\n  ' + parts.join(',\n  ') + '\n}' : '{ ' + parts[0] + ' }';
+    return "import { pour } from 'beer-text';\n\nconst h1 = document.querySelector('h1');\npour(h1, " + opts + ");";
+  }
+  function renderSnippet() {
+    snippet.innerHTML = esc(snippetText())
+      .replace(/^(import)(.*)(from) /m, '<span class="k">$1</span>$2<span class="k">$3</span> ')
+      .replace(/'([^']*)'/g, '<span class="s">\'$1\'</span>')
+      .replace(/(head: )([\d.]+)/, '$1<span class="n">$2</span>');
+  }
+  renderSnippet();
+
+  // Copy buttons.
+  function copyText(text, btn) {
+    var label = btn.querySelector('span');
+    function done(ok) {
+      btn.dataset.done = String(ok); label.textContent = ok ? 'Copied' : 'Select and copy';
+      setTimeout(function () { btn.dataset.done = 'false'; label.textContent = 'Copy'; }, 1600);
+    }
+    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(function () { done(true); }, function () { done(false); });
+    else done(false);
+  }
+  document.querySelectorAll('.copy[data-copy]').forEach(function (b) { b.addEventListener('click', function () { copyText(b.dataset.copy, b); }); });
+  document.getElementById('copy-snippet').addEventListener('click', function () { copyText(snippetText(), this); });
+
+  // The wrapping example.
+  var stack = document.getElementById('stack'), sctl = pour(stack, { preset: 'amber' });
+  clickToPour(stack, function () { sctl.replay(); });
 </script>
 </body>
 </html>
