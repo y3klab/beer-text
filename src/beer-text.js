@@ -17,7 +17,8 @@ export var presets = {
 var NS = 'http://www.w3.org/2000/svg';
 var HOLD = 350, LAND_START = 1.9, LAND_END = 2.5;   // ms before the pour starts; landing, in s after it stops
 var COUNT = typeof Symbol === 'function' ? Symbol.for('beer-text.count') : '__beerTextCount';   // shared by every copy of the library on the page, so SVG ids never repeat
-var owners = new WeakMap();   // heading -> its controller: a second pour() on a heading replaces the first
+var OWNERS = typeof Symbol === 'function' ? Symbol.for('beer-text.owners') : '__beerTextOwners';   // heading -> its controller, shared by every copy: a second pour() on a heading replaces the first
+var MAX_TEXT = 400, MAX_PIXELS = 4096 * 4096;   // beyond these the heading stays plain: per-character measuring and canvas memory grow with them
 
 // The letter shapes are a clipPath of <text>, which reads as text to anything that reads the heading
 // (search engines, link previews, innerText). So they live in one hidden SVG at the end of the body,
@@ -30,7 +31,23 @@ function holder() {
   }
   return h;
 }
-function el(n, a, p) { var e = document.createElementNS(NS, n); for (var k in a) e.setAttribute(k, a[k]); if (p) p.appendChild(e); return e; }
+function el(n, a, p) {   // style goes through the CSSOM: a strict Content Security Policy blocks style attributes
+  var e = document.createElementNS(NS, n);
+  for (var k in a) { if (k === 'style') e.style.cssText = a[k]; else e.setAttribute(k, a[k]); }
+  if (p) p.appendChild(e); return e;
+}
+// Only real CSS colors reach the SVG: a paint value like url(...) could load an outside resource.
+function isColor(v) { return typeof v === 'string' && !!window.CSS && CSS.supports('color', v); }
+function pickColors(o) {
+  var base = Object.prototype.hasOwnProperty.call(presets, o.preset) ? presets[o.preset] : presets.lager, over = o.colors || {}, c = {};
+  Object.keys(base).forEach(function (k) {
+    var v = Object.prototype.hasOwnProperty.call(over, k) ? over[k] : null;
+    if (k !== 'beer') { c[k] = isColor(v) ? v : base[k]; return; }
+    var stops = typeof v === 'string' ? [v, v, v, v] : v;   // one color fills all four stops
+    c.beer = Array.isArray(stops) && stops.length === 4 && stops.every(isColor) ? stops.slice() : base.beer;
+  });
+  return c;
+}
 function rng(seed) { return function () { seed |= 0; seed = seed + 0x6D2B79F5 | 0; var r = Math.imul(seed ^ seed >>> 15, 1 | seed); r = r + Math.imul(r ^ r >>> 7, 61 | r) ^ r; return ((r ^ r >>> 14) >>> 0) / 4294967296; }; }
 function smoothstep(a, b, x) { var t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); }
 function clamp(x, a, b) { return Math.max(a, Math.min(b, x)); }
@@ -92,14 +109,14 @@ function unsupported(target, cs) {
 // so ask for the face and poll check(); a system font passes check() at once. Both get the heading's own
 // characters as shown, so a font split into character subsets loads the subsets the heading uses. Gives up after 2.5 s even if
 // a load never settles, and a font API that throws counts as no font.
-function fontReady(spec, text) {
+function fontReady(spec, text) {   // spec: a function, read on every attempt
   return new Promise(function (done) {
     var ended = false, poll = 0, deadline = setTimeout(function () { end(false); }, 2500);
     function end(ok) { if (ended) return; ended = true; clearTimeout(deadline); clearTimeout(poll); done(ok); }
     (function attempt() {
-      Promise.resolve().then(function () { return document.fonts.load(spec, text); }).then(function () {
+      Promise.resolve().then(function () { return document.fonts.load(spec(), text); }).then(function () {
         if (ended) return;
-        if (document.fonts.check(spec, text)) return end(true);
+        if (document.fonts.check(spec(), text)) return end(true);
         poll = setTimeout(attempt, 100);
       }).catch(function () { end(false); });
     })();
@@ -121,8 +138,9 @@ function fontReady(spec, text) {
  */
 export function pour(target, options) {
   var o = options || {};
-  var colors = Object.assign({}, presets[o.preset] || presets.lager, o.colors || {});
-  var head = o.head == null ? null : clamp(+o.head, 0.05, 0.6);
+  if (target != null && target.nodeType !== 1) throw new TypeError('beer-text: pour() takes an element, not ' + (typeof target === 'string' ? 'the string "' + target + '"' : typeof target));
+  var colors = pickColors(o), emptyOpt = isColor(o.empty) ? o.empty : null;
+  var head = o.head == null || !isFinite(+o.head) ? null : clamp(+o.head, 0.05, 0.6);
   var autoplay = o.autoplay !== false;
   var id = 'beer-text-' + (window[COUNT] = (window[COUNT] || 0) + 1) + '-';
   var G = null, lastW = 0, lastH = 0, raf = 0, t0 = 0, playing = false, sim = null, dead = false;
@@ -139,6 +157,7 @@ export function pour(target, options) {
   function newPour() { settle(); ctl.finished = new Promise(function (r) { resolveFinished = r; }); }
   newPour();
 
+  var owners = window[OWNERS] || (window[OWNERS] = new WeakMap());
   if (target && owners.has(target)) owners.get(target).destroy();
   if (!target || !document.fonts || !window.requestAnimationFrame || (mqForced && mqForced.matches)) { dead = true; settle(); return ctl; }
   owners.set(target, ctl);
@@ -152,7 +171,12 @@ export function pour(target, options) {
       try { return fn.apply(this, arguments); } catch (e) { destroy(); if (window.console) console.error('beer-text:', e); }
     };
   }
-  var cs = getComputedStyle(target), emptyColor = o.empty;
+  var cs = getComputedStyle(target), emptyColor = emptyOpt;
+
+  // The heading's own inline styles, value and priority, so destroy() puts back exactly what was there.
+  function grab(p) { return [target.style.getPropertyValue(p), target.style.getPropertyPriority(p)]; }
+  function put(p, v) { target.style.setProperty(p, v[0], v[1]); }
+  function hide() { target.style.setProperty('color', 'transparent', 'important'); target.style.setProperty('-webkit-text-fill-color', 'transparent', 'important'); }
 
   function font(size) { return cs.fontStyle + ' ' + cs.fontWeight + ' ' + size + 'px ' + cs.fontFamily; }
 
@@ -160,13 +184,14 @@ export function pour(target, options) {
   // Positions come back in the heading's own CSS pixels: a scaled heading or ancestor is divided back out.
   function measure() {
     cs = getComputedStyle(target);
+    if (target.textContent.length > MAX_TEXT) return null;
     // The empty letters take the text color as styled now, not when pour() ran: a page's stylesheet can
     // arrive after its scripts (Safari, uncached). Once the text is transparent, the author's inline color
     // goes back for the read, in the same task, so nothing paints in between.
-    if (!o.empty) {
-      if (saved) { target.style.color = saved.color; target.style.webkitTextFillColor = saved.fill; }
+    if (!emptyOpt) {
+      if (saved) { put('color', saved.color); put('-webkit-text-fill-color', saved.fill); }
       emptyColor = cs.color;
-      if (saved) { target.style.color = 'transparent'; target.style.webkitTextFillColor = 'transparent'; }
+      if (saved) hide();
     }
     if (unsupported(target, cs)) return null;
     var hr = target.getBoundingClientRect();
@@ -706,7 +731,7 @@ export function pour(target, options) {
   });
 
   function play() {
-    if (!G || reduce) { stillFrame(); return; }
+    if (!G || reduce || !onScreen || document.hidden) { stillFrame(); return; }   // nobody would see it: the full pint
     cancelAnimationFrame(raf);
     if (!G.tune) G.tune = calibratePour(G.geo);
     sim = createPourSim(G.geo, G.tune);
@@ -721,7 +746,8 @@ export function pour(target, options) {
   function mount(andPlay) {
     if (mountRaf) { cancelAnimationFrame(mountRaf); mountRaf = 0; andPlay = andPlay || mountPlay; }
     var m = measure();
-    if (!m || !(m.capH > 0)) { if (G) destroy(); else { want = null; settle(); } return; }   // no usable metrics or unsupported typography: the plain heading, never a broken overlay
+    var dpr = Math.min(2, window.devicePixelRatio || 1);
+    if (!m || !(m.capH > 0) || m.W * m.H * dpr * dpr > MAX_PIXELS) { if (G) destroy(); else { want = null; settle(); } return; }   // no usable metrics or unsupported typography: the plain heading, never a broken overlay
     var next = build(m);
     mountPlay = andPlay;
     mountRaf = requestAnimationFrame(safe(function () {
@@ -731,10 +757,9 @@ export function pour(target, options) {
       G = next;
       holder().appendChild(G.clip);
       if (!saved) {
-        saved = { position: target.style.position, color: target.style.color, fill: target.style.webkitTextFillColor };
+        saved = { position: grab('position'), color: grab('color'), fill: grab('-webkit-text-fill-color') };
         if (cs.position === 'static') target.style.position = 'relative';
-        target.style.color = 'transparent';
-        target.style.webkitTextFillColor = 'transparent';
+        hide();
       }
       target.appendChild(G.svg);
       target.appendChild(G.canvas);
@@ -779,7 +804,7 @@ export function pour(target, options) {
       }
     } finally {   // whatever else fails, the text comes back and finished settles
       if (saved) {
-        target.style.position = saved.position; target.style.color = saved.color; target.style.webkitTextFillColor = saved.fill;
+        put('position', saved.position); put('color', saved.color); put('-webkit-text-fill-color', saved.fill);
         saved = null;
       }
       settle();
@@ -818,7 +843,7 @@ export function pour(target, options) {
 
   var txt = target.textContent;
   // Capitalize's capitals can follow a <br> that textContent doesn't show, so it asks for both cases.
-  fontReady(font(10), cs.textTransform === 'capitalize' ? txt + txt.toUpperCase() : transform(txt, cs.textTransform)).then(safe(function (ok) {
+  fontReady(function () { return font(10); }, cs.textTransform === 'capitalize' ? txt + txt.toUpperCase() : transform(txt, cs.textTransform)).then(safe(function (ok) {
     if (!ok) { destroy(); return; }      // the font never arrived: the plain heading stays
     ready = true;
     if (want) { start(want === 'play'); return; }

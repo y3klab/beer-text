@@ -1,0 +1,17 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- A strict Content Security Policy: no inline styles or scripts. The library must still draw, and never trip it. -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self'; script-src 'self'">
+<title>beer-text CSP test</title>
+</head>
+<body>
+<!-- Browser test for a page with a strict Content Security Policy. Serve the repo root and open /test/csp.html in a
+     foreground window; the title ends in ALL PASS or N FAIL. The script is a file because inline scripts are blocked. -->
+<h2 id="h">Lager</h2>
+<pre id="out">running...</pre>
+<script type="module" src="csp.js"></script>
+</body>
+</html>

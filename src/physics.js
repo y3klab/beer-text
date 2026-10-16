@@ -4,6 +4,8 @@
    Time is compressed: a real head takes minutes to settle, this one about a second (same shape of decay).
    geo: { H: glass height px, Wg: glass width px, hFinal: final liquid height px, headT: final head px } */
 export function createPourSim(geo, tune) {
+  // Bad geometry would make the step count infinite or NaN and hang the page: refuse it.
+  if (!(geo.H > 0 && geo.Wg > 0 && geo.hFinal > 0 && geo.headT >= 0) || ![geo.H, geo.Wg, geo.hFinal, geo.headT].every(isFinite)) throw new RangeError('beer-text physics: geometry needs finite H, Wg, hFinal > 0 and headT >= 0');
   var N = 48, DT = 1 / 480;
   var H = geo.H, dx = geo.Wg / (N - 1);
   var g = 9.81 * (H / 0.15);                     // the glass height stands for a 15 cm pint
@@ -14,6 +16,7 @@ export function createPourSim(geo, tune) {
   // Waves: wave speed * step / column width must stay under 1 or the surface blows up. A wide title
   // runs well under it in one step; a narrow, tall glass (one letter) needs the wave step split.
   var WAVE_SUB = Math.max(1, Math.ceil(Math.sqrt(g * Math.max(geo.hFinal, 0.02 * H)) * DT / dx / 0.5));
+  if (WAVE_SUB > 1000) throw new RangeError('beer-text physics: glass too narrow for its height');
   var TAU_WET = 1.3, DRAIN = 0.25, WET = 0.35;   // wet foam collapses; a quarter of it drains back as beer
   var QMAX = geo.hFinal / 4.2, EASE = 0.12 * geo.hFinal;
   var kappa = tune.kappa, beta = tune.beta;
@@ -94,7 +97,8 @@ export function createPourSim(geo, tune) {
     s.t += DT;
   }
 
-  s.advanceTo = function (T) { while (s.t + DT <= T) step(); return s; };
+  // At most 60 s of simulated time per call (a full pour takes under 14): a far-off or non-finite target would never return.
+  s.advanceTo = function (T) { if (!(T - s.t <= 60)) throw new RangeError('beer-text physics: advanceTo(' + T + ') is too far ahead'); while (s.t + DT <= T) step(); return s; };
   s.DT = DT;
   return s;
 }

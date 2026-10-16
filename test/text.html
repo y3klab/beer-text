@@ -285,6 +285,59 @@
     return f === 'rgb(0, 128, 0)' && real === 'rgba(0, 0, 0, 0)' ? true : 'empty letters drawn ' + f + ', heading text color ' + real;
   });
 
+  // Release audits (2026-10-16).
+  await test('colors.beer as one color fills all four gradient stops', async function () {
+    var h = heading('Lager'), c = pour(h, { autoplay: false, colors: { beer: 'rgb(1, 2, 3)' } });
+    await sleep(500);
+    var stops = Array.from(h.querySelectorAll('linearGradient[id$="beer"] stop')).map(function (s) { return s.getAttribute('stop-color'); });
+    c.destroy();
+    return stops.length === 4 && stops.every(function (s) { return s === 'rgb(1, 2, 3)'; }) ? true : 'stops ' + JSON.stringify(stops);
+  });
+
+  await test('a color option that is not a color (a url()) is ignored, never put in the SVG', async function () {
+    var h = heading('Lager'), c = pour(h, { autoplay: false, colors: { foam: 'url(https://example.invalid/p.svg#p)', band: 'red; x' } });
+    await sleep(500);
+    var svg = h.querySelector('svg[data-beer-text]'), bad = [];
+    if (svg) svg.querySelectorAll('*').forEach(function (e) { Array.from(e.attributes).forEach(function (a) { if (/example\.invalid|red; x/.test(a.value)) bad.push(e.tagName + ' ' + a.name); }); });
+    c.destroy();
+    return svg && !bad.length ? true : svg ? 'found in ' + bad.join(', ') : 'no overlay';
+  });
+
+  await test('preset: "__proto__" pours as lager', async function () {
+    var h = heading('Lager'), c = pour(h, { autoplay: false, preset: '__proto__' });
+    await sleep(500);
+    var ok = !!h.querySelector('svg[data-beer-text]');
+    c.destroy();
+    return ok ? true : 'no overlay';
+  });
+
+  await test('the font check reads the font when it checks, so a stylesheet after pour() is waited for', async function () {
+    var specs = [], realLoad = document.fonts.load, realCheck = document.fonts.check, first = true;
+    document.fonts.load = function (f) { specs.push(f); return realLoad.apply(this, arguments); };
+    document.fonts.check = function () { if (first) { first = false; return false; } return realCheck.apply(this, arguments); };
+    var h = heading('Lager'); h.id = 'late-font-h';
+    var s = document.createElement('style'), c;
+    try {
+      c = pour(h, { autoplay: false });
+      s.textContent = '#late-font-h { font-family: BeerLateFamily, Georgia, serif; }'; document.head.appendChild(s);
+      await sleep(600);
+    } finally { document.fonts.load = realLoad; document.fonts.check = realCheck; }
+    c.destroy(); s.remove();
+    return specs.some(function (f) { return f.indexOf('BeerLateFamily') >= 0; }) ? true : 'fonts asked for: ' + JSON.stringify(specs);
+  });
+
+  await test('a very long heading keeps the plain heading; an ordinary long title still pours', async function () {
+    var r = await mounted(new Array(121).join('beer '), 'font-size:12px'), big = r.overlay; r.c.destroy();
+    var ok = await mounted('Poured by physics, not keyframes, at the end of a long day', 'font-size:20px'), normal = ok.overlay; ok.c.destroy();
+    return !big && normal ? true : '600-character heading drew ' + big + ', ordinary title drew ' + normal;
+  });
+
+  await test('a heading too large to draw sensibly keeps the plain heading', async function () {
+    var r = await mounted('Beer', 'font-size:3000px;line-height:1;width:max-content'), drew = r.overlay, size = r.h.clientWidth + ' x ' + r.h.clientHeight;
+    r.c.destroy();
+    return !drew ? true : 'drew an overlay ' + size;
+  });
+
   var fails = results.filter(function (l) { return l[0] === 'F'; }).length;
   document.title = 'beer-text text: ' + (fails ? fails + ' FAIL' : 'ALL PASS');
   results.push('\n' + (fails ? fails + ' FAIL' : 'ALL PASS'));

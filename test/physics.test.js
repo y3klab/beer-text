@@ -41,3 +41,16 @@ for (const [name, g] of Object.entries(cases)) {
     assert.ok(Math.abs(dry - 1.12 * g.headT) < 0.08 * g.headT, `settled head on target (${dry.toFixed(1)} vs ${(1.12 * g.headT).toFixed(1)})`);
   });
 }
+
+test('invalid geometry is refused with a RangeError, never an endless loop', () => {
+  for (const bad of [geo(200, 0, 0.32), geo(NaN, 200, 0.32), geo(200, Infinity, 0.32), geo(200, 1e-9, 0.32), { H: 200, Wg: 200 }]) {
+    assert.throws(() => createPourSim(bad, { kappa: 1, beta: 1 }), RangeError, JSON.stringify(bad));
+  }
+});
+
+test('advanceTo refuses a target time that is not finite or far ahead', () => {
+  const g = geo(200, 339, 0.32), sim = createPourSim(g, calibratePour(g));
+  for (const T of [Infinity, NaN, 1e9]) assert.throws(() => sim.advanceTo(T), RangeError, String(T));
+  sim.advanceTo(1);
+  assert.ok(sim.t > 0.99, 'an ordinary step still runs');
+});

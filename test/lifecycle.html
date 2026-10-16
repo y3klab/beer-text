@@ -234,6 +234,51 @@
     return plain(h) && !document.querySelector('svg[data-beer-text="defs"]') ? true : 'leftovers';
   });
 
+  // Release audits (2026-10-16).
+  await test('two copies of the library on one heading: one overlay, and the text comes back after both are destroyed', async function () {
+    var a = await import('../src/beer-text.js?copy=la'), b = await import('../src/beer-text.js?copy=lb');
+    var h = heading(), c1 = a.pour(h, { autoplay: false }), c2 = b.pour(h, { autoplay: false });
+    await sleep(500);
+    var n = h.querySelectorAll('svg[data-beer-text]').length;
+    c1.destroy(); c2.destroy();
+    return n === 1 && plain(h) ? true : n + ' overlays, plain after destroy: ' + plain(h);
+  });
+
+  await test('replay() while the heading is off screen shows the full pint instead of pouring unseen', async function () {
+    var h = heading(); h.style.marginTop = '300vh';
+    var c = pour(h, { autoplay: false });
+    await sleep(500);
+    var quick = await within(c.replay(), 600), mountedOk = overlays(h) > 0;
+    c.destroy();
+    return quick && mountedOk ? true : 'settled within 600 ms: ' + quick + ', overlay ' + mountedOk;
+  });
+
+  await test('an inline !important color: hidden while mounted, restored with its priority after destroy()', async function () {
+    var s = document.createElement('style'); s.textContent = '#imp-h { color: rgb(0, 0, 255) !important; }'; document.head.appendChild(s);
+    var h = heading(); h.id = 'imp-h'; h.style.setProperty('color', 'rgb(255, 0, 0)', 'important');
+    var c = pour(h, { autoplay: false });
+    await sleep(500);
+    var during = getComputedStyle(h).color;
+    c.destroy();
+    var after = getComputedStyle(h).color, prio = h.style.getPropertyPriority('color');
+    s.remove();
+    return during === 'rgba(0, 0, 0, 0)' && after === 'rgb(255, 0, 0)' && prio === 'important' ? true
+      : 'mounted ' + during + ', after ' + after + ' (priority "' + prio + '")';
+  });
+
+  await test('a selector string instead of an element: a TypeError that names beer-text', async function () {
+    try { pour('#title'); } catch (e) { return e instanceof TypeError && /beer-text/.test(e.message) ? true : 'threw ' + e.name + ': ' + e.message; }
+    return 'did not throw';
+  });
+
+  await test('an invalid head value falls back to the default and the pour still finishes', async function () {
+    var h = heading(), c = pour(h, { autoplay: false, head: 'tall' });
+    await sleep(500);
+    var done = await within(c.replay(), 8000), ok = overlays(h) > 0;
+    c.destroy();
+    return done && ok ? true : 'finished within 8 s: ' + done + ', overlay ' + ok;
+  });
+
   var fails = results.filter(function (l) { return l[0] === 'F'; }).length;
   document.title = 'beer-text lifecycle: ' + (fails ? fails + ' FAIL' : 'ALL PASS');
   results.push('\n' + (fails ? fails + ' FAIL' : 'ALL PASS'));
