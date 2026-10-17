@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>beer-text README animation</title>
+<meta name="robots" content="noindex">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Anton&display=swap" rel="stylesheet">
+<style>
+  /* The README's animation, recorded by scripts/record-pour.mjs on a transparent background so it sits on
+     GitHub's light and dark themes alike. The black outline keeps the white empty letters readable on white. */
+  html, body { margin: 0; background: transparent; }
+  body { padding: 24px; }
+  .stack { display: inline-grid; font-family: Anton, Impact, "Arial Narrow Bold", sans-serif; font-weight: 400; font-size: 176px; line-height: .9; letter-spacing: .005em; white-space: nowrap; }
+  .stack > * { grid-area: 1 / 1; margin: 0; font: inherit; letter-spacing: inherit; }
+  /* The outline sits behind the poured heading: the stroke's inner half is covered by the letters, its outer half shows. */
+  .outline { color: #000; -webkit-text-stroke: 3px #000; }
+  .title { position: relative; z-index: 1; color: #fff; }
+</style>
+</head>
+<body>
+  <div class="stack">
+    <span class="outline" aria-hidden="true">Beer Text</span>
+    <h1 class="title" id="title">Beer Text</h1>
+  </div>
+  <script type="module">
+    import { pour } from '../src/beer-text.js';
+    window.pint = pour(document.getElementById('title'), { preset: 'lager', autoplay: false });
+    window.pourOnce = function () { window.settled = 0; return window.pint.replay().then(function () { window.settled = performance.now(); }); };
+  </script>
+</body>
+</html>

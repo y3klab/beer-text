@@ -1,6 +1,6 @@
 # beer-text
 
-[![The words Beer Text filling with beer: the stream lands, a head builds and settles, and bubbles rise through the letters](https://y3klab.github.io/beer-text/demo/pour.gif)](https://y3klab.github.io/beer-text/demo/)
+[![The words Beer Text filling with beer: the stream lands, a head builds and settles, and bubbles rise through the letters](https://y3klab.github.io/beer-text/demo/pour.webp)](https://y3klab.github.io/beer-text/demo/)
 
 **[Try the demo](https://y3klab.github.io/beer-text/demo/)**
 
@@ -68,7 +68,7 @@ Tested in current Safari (macOS and iOS) and Firefox, and in Chrome on the site 
 ## Develop
 
 - Demo: serve the repo root (`python3 -m http.server`) and open `/demo/`.
-- The README's GIF and the share card: `node scripts/record-gif.mjs` (needs ffmpeg) and `node scripts/render-share-card.mjs`, with the repo root served on port 8830 and Google Chrome installed.
+- The README's animation and the share card: `node scripts/record-pour.mjs` (needs ffmpeg and img2webp: `brew install webp`) and `node scripts/render-share-card.mjs`, with the repo root served on port 8830 and Google Chrome installed.
 - Tests: `npm test` (physics, in Node), and `test/lifecycle.html`, `test/text.html` and `test/csp.html` in a foreground browser window (serve the repo root and open each page; the title reads ALL PASS or N FAIL).
 
 ## License
